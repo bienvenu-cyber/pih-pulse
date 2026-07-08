@@ -7,15 +7,24 @@ module.exports = {
     extend: {
       colors: {
         malt: {
-          deep: "#2A2312",  // Malt profond (Background)
-          light: "#3D3118", // Malt clair (Surface)
-          dark: "#1A150A",  // Malt noir (Nav/Overlay)
+          deep: "#0D0B05",   // Malt profond (Background de l'app)
+          card: "#18140B",   // Malt clair (Surface des cartes)
+          nav: "#080703",    // Malt noir (Bottom nav, Header)
+          border: "#261F12", // Bordures fines chaudes
         },
-        turmeric: "#FFBE0B", // Turmeric (Primary/CTA)
+        turmeric: "#FFBE0B", // Turmeric (Primary active state / CTA)
         creme: "#F5EDD6",    // Crème (Texte principal)
-        sable: "#A89060",    // Sable (Texte secondaire)
-        kaki: "#7CB87A",     // Vert kaki (Succès)
-        corail: "#E8634A",   // Corail (Danger)
+        sable: "#A39171",    // Sable (Texte secondaire, placeholders)
+        kaki: "#7CB87A",     // Vert kaki (Succès / Validé)
+        corail: "#E8634A",   // Corail (Erreurs / Danger)
+      },
+      fontFamily: {
+        space: ["SpaceGrotesk700", "sans-serif"],
+        "space-medium": ["SpaceGrotesk500", "sans-serif"],
+        inter: ["Inter400", "sans-serif"],
+        "inter-medium": ["Inter500", "sans-serif"],
+        "inter-semibold": ["Inter600", "sans-serif"],
+        "inter-bold": ["Inter700", "sans-serif"],
       },
     },
   },

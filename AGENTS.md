@@ -10,34 +10,50 @@ Ce fichier contient les règles, contraintes et instructions que tout agent IA d
 * **TypeScript :** Utiliser un typage strict pour toutes les variables, props et réponses d'API.
 * **Navigation :** Utiliser Expo Router (navigation par fichiers).
 * **Styles :** Utiliser **NativeWind v4** (Tailwind CSS). Ne pas écrire de styles inline ou StyleSheet sauf cas de force majeure.
-* **Icônes :** Utiliser `lucide-react-native`.
+* **Icônes :** Utiliser `lucide-react-native` pour les icônes vectorielles.
 
 ---
 
-## 🎨 Charte Graphique (Aesthetics & Theme)
+## 🎨 Charte Graphique Validée ("Premium Turmeric & Malt")
 
-* **Mode Sombre Uniquement :** L'application n'a pas de mode clair. Le thème est "Turmeric & Malt".
-* **Palette de Couleurs (Tailwind Config) :**
-  - Fond de l'app : `bg-malt-deep` (`#2A2312`)
-  - Cartes & Surfaces : `bg-malt-light` (`#3D3118`)
-  - Barres de nav & Modales : `bg-malt-dark` (`#1A150A`)
-  - Éléments cliquables / CTA : `bg-turmeric` (`#FFBE0B`)
-  - Textes principaux : `text-creme` (`#F5EDD6`)
-  - Textes secondaires / Placeholder : `text-sable` (`#A89060`)
+L'application est **uniquement en mode sombre**. Les couleurs doivent respecter strictement les codes hexadécimaux suivants :
+
+* **Couleurs du Thème (Tailwind Config) :**
+  - Fond de l'app (Malt profond) : `bg-malt-deep` (`#0D0B05`)
+  - Cartes & Surfaces (Malt clair) : `bg-malt-card` (`#18140B`)
+  - Barres de nav & Header (Malt noir) : `bg-malt-nav` (`#080703`)
+  - Bordures fines (Malt bordure) : `border-malt` (`#261F12`)
+  - Éléments cliquables actifs / CTA (Turmeric) : `bg-turmeric` (`#FFBE0B`)
+  - Textes principaux (Crème) : `text-creme` (`#F5EDD6`)
+  - Textes secondaires / Placeholder (Sable) : `text-sable` (`#A39171`)
   - Succès : `text-kaki` / `bg-kaki/15` (`#7CB87A`)
   - Danger / Erreurs : `text-corail` / `bg-corail/15` (`#E8634A`)
 
+* **Discipline d'utilisation du Jaune (Turmeric) :**
+  Le jaune `#FFBE0B` doit être utilisé de manière extrêmement restreinte (maximum 5% de la surface de l'écran) :
+  - Uniquement pour l'icône/onglet actif du Bottom Nav.
+  - Uniquement pour le bouton d'action principal (CTA) de l'écran ou de la carte vedette.
+  - Tout texte ou icône secondaire doit utiliser du Crème ou du Sable, jamais de jaune.
+
 ---
 
-## 💾 Conventions Supabase
+## 🧭 Navigation & Layout de l'En-tête
 
-* **Client :** Toujours importer le client depuis `lib/supabase.ts`.
-* **Sécurité :** Ne jamais exposer de clés secrètes (service_role). Toujours utiliser des clés publiques anonymes (`EXPO_PUBLIC_SUPABASE_ANON_KEY`).
-* **Session :** L'authentification utilise la persistance automatique via `expo-secure-store`.
+* **Bottom Tab Navigation (5 onglets) :**
+  1. **Feed** (icône `Home`)
+  2. **Projets** (icône `Layers` — attention, ne pas utiliser d'icône Rocket)
+  3. **Missions** (icône `Target`)
+  4. **Équipes** (icône `Users`)
+  5. **Profil** (icône `User`)
+
+* **Header (En-tête de l'application) :**
+  - Titre à gauche : **PIH Pulse** (ou titre de l'écran).
+  - Actions à droite (flex, gap: 8px) :
+    1. Icône Notifications (cloche : `Bell`) à gauche.
+    2. Icône Messagerie (avion en papier : `Send`, incliné à 30 degrés pour pointer vers la droite) à droite.
 
 ---
 
 ## 📖 Références de Conception
 
-* Lire en priorité le document [PIH_Pulse_PRD.md](file:///Users/bv/Desktop/PIH-PULSE/PIH_Pulse_PRD.md) pour comprendre la logique métier de chaque écran.
-* Consulter le fichier [plan.md](file:///Users/bv/Desktop/PIH-PULSE/plan.md) pour suivre la progression et mettre à jour les checklists après chaque modification.
+* Se référer au fichier [plan.md](file:///Users/bv/Desktop/PIH-PULSE/plan.md) pour suivre et cocher les checklists après chaque modification.

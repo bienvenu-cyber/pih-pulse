@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIH Pulse — Concepts Premium Sombre & Clair</title>
+  <!-- Google Fonts: Space Grotesk & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <style>
+    /* DESIGN SYSTEM & TOKENS (Mode Sombre par défaut) */
+    :root {
+      --bg-malt-deep: #0D0B05;    /* Noir chocolat ultra-sombre */
+      --bg-malt-card: #18140B;    /* Surface des cartes */
+      --bg-malt-hover: #221B0F;   /* Hover sur cartes */
+      --bg-malt-nav: #080703;     /* Barres d'action et nav */
+      --border-malt: #261F12;     /* Bordure fine et chaude */
+      
+      --color-turmeric: #FFBE0B;  /* Curcuma (CTA & Active states ONLY) */
+      --color-creme: #F5EDD6;     /* Texte principal (Crème) */
+      --color-sable: #A39171;     /* Texte secondaire (Sable) */
+      
+      --color-kaki: #7CB87A;      /* Succès */
+      --color-corail: #E8634A;    /* Erreur / Urgent */
+      
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      
+      --phone-border: #1C170E;
+      --shadow-intensity: rgba(0, 0, 0, 0.9);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background: #080703;
+      color: #F5EDD6;
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    /* Container de présentation de l'app */
+    .presentation-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 32px;
+      max-width: 1000px;
+      width: 100%;
+    }
+
+    .title-area {
+      text-align: center;
+      max-width: 600px;
+    }
+
+    .title-area h1 {
+      font-family: var(--font-display);
+      font-size: 32px;
+      color: #F5EDD6;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .title-area h1 span {
+      color: var(--color-turmeric);
+    }
+
+    .title-area p {
+      color: #A39171;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* PHONE AND CONTROLS FLEX CONTAINER */
+    .app-showcase {
+      display: flex;
+      gap: 40px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    /* PHONE CONTAINER */
+    .phone-mockup {
+      width: 375px;
+      height: 760px;
+      background: var(--bg-malt-deep);
+      border-radius: 48px;
+      border: 6px solid var(--phone-border);
+      box-shadow: 0 25px 60px -15px var(--shadow-intensity), 
+                  0 0 0 1px var(--border-malt);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* VARIANTES DU MODE CLAIR ("Papier & Or" inversé) */
+    .phone-mockup.light-mode {
+      --bg-malt-deep: #F8F5EC;    /* Fond crème clair / Papier */
+      --bg-malt-card: #FFFFFF;    /* Cartes blanc pur */
+      --bg-malt-hover: #FDFBEE;   /* Hover plus clair */
+      --bg-malt-nav: #F0EAD6;     /* Nav/Header crème plus marqué */
+      --border-malt: #E6DCBD;     /* Bordure fine et chaude */
+      
+      --color-turmeric: #D9A000;  /* Or / Curcuma renforcé pour fond clair */
+      --color-creme: #0D0B05;     /* Texte principal chocolat-noir */
+      --color-sable: #705F40;     /* Texte secondaire sable-foncé */
+      
+      --phone-border: #E6DCBD;
+      --shadow-intensity: rgba(13, 11, 5, 0.15);
+    }
+
+    /* Status Bar */
+    .status-bar {
+      height: 44px;
+      background: var(--bg-malt-nav);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 32px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-creme);
+      border-bottom: 1px solid var(--border-malt);
+      transition: all 0.4s ease;
+    }
+    
+    .status-bar-icons {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    /* App Header */
+    .app-header {
+      background: var(--bg-malt-nav);
+      height: 60px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--border-malt);
+      transition: all 0.4s ease;
+    }
+
+    .app-header .logo {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--color-creme);
+      letter-spacing: -0.2px;
+    }
+
+    .app-header .logo span {
+      color: var(--color-turmeric);
+    }
+
+    .header-action {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--bg-malt-card);
+      border: 1px solid var(--border-malt);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-sable);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .header-action:hover {
+      color: var(--color-creme);
+      border-color: var(--color-sable);
+      background: var(--bg-malt-hover);
+    }
+
+    /* Main Content */
+    .screen-body {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* CARDS */
+    .card {
+      background: var(--bg-malt-card);
+      border: 1px solid var(--border-malt);
+      border-radius: 20px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card:hover {
+      background: var(--bg-malt-hover);
+      border-color: #3D311F;
+      transform: translateY(-2px);
+    }
+    
+    .phone-mockup.light-mode .card:hover {
+      border-color: #C0B28A;
+    }
+
+    /* Subtils badges de type */
+    .card-tag {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--color-sable);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-tag .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    .card-tag.project .dot { background: var(--color-turmeric); }
+    .card-tag.mission .dot { background: var(--color-kaki); }
+    .card-tag.event .dot { background: var(--color-corail); }
+
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--color-creme);
+      line-height: 1.3;
+    }
+
+    .card-meta {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--color-sable);
+    }
+
+    /* Bouton CTA secondaire ultra-sobre */
+    .card-action {
+      align-self: flex-start;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--color-creme);
+      background: rgba(245, 237, 214, 0.04);
+      border: 1px solid var(--border-malt);
+      padding: 8px 16px;
+      border-radius: 30px;
+      transition: all 0.2s ease;
+    }
+
+    .card:hover .card-action {
+      background: var(--color-creme);
+      color: var(--bg-malt-deep);
+      border-color: var(--color-creme);
+    }
+
+    /* Discipline de fer : Le CTA jaune uniquement pour le projet vedette ou bouton d'action fort */
+    .card-action.primary {
+      background: var(--color-turmeric);
+      color: #0D0B05;
+      border-color: var(--color-turmeric);
+    }
+
+    .card-action.primary:hover {
+      background: #E5AB00;
+      border-color: #E5AB00;
+      transform: scale(1.02);
+    }
+    
+    .phone-mockup.light-mode .card-action.primary {
+      color: #FFFFFF; /* texte blanc sur bouton or pour le mode clair */
+    }
+
+    /* BOTTOM NAV */
+    .bottom-nav {
+      background: var(--bg-malt-nav);
+      height: 72px;
+      border-top: 1px solid var(--border-malt);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding-bottom: 8px;
+      transition: all 0.4s ease;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      color: var(--color-sable);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .nav-item:hover {
+      color: var(--color-creme);
+    }
+
+    .nav-item.active {
+      color: var(--color-turmeric);
+    }
+
+    .nav-item span {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+    }
+
+    /* CONTROL PANEL */
+    .control-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background: #18140B;
+      border: 1px solid #261F12;
+      padding: 24px;
+      border-radius: 24px;
+      width: 280px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .control-panel h3 {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 700;
+      color: #F5EDD6;
+      margin-bottom: 4px;
+    }
+
+    .control-panel p {
+      color: #A39171;
+      font-size: 11px;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .toggle-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: var(--color-turmeric);
+      color: #0D0B05;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 14px;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      width: 100%;
+    }
+
+    .toggle-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .theme-info {
+      margin-top: 8px;
+      border-top: 1px solid #261F12;
+      padding-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .info-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: #A39171;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .info-details {
+      font-size: 11px;
+      color: #F5EDD6;
+      line-height: 1.5;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+
+<div class="presentation-container">
+  
+  <div class="title-area">
+    <h1>PIH Pulse — <span>Double Thème Validé</span></h1>
+    <p>Visualise et compare le rendu de la charte. À gauche, l'application. À droite, utilise le bouton pour basculer dynamiquement du mode sombre (Turmeric & Malt) au mode clair (Papier & Or inversé).</p>
+  </div>
+
+  <div class="app-showcase">
+    <!-- LE TÉLÉPHONE MOCKUP -->
+    <div class="phone-mockup" id="phone">
+      <!-- Barre de statut -->
+      <div class="status-bar">
+        <span>9:41</span>
+        <div class="status-bar-icons">
+          <i data-lucide="wifi" style="width: 13px; height: 13px;"></i>
+          <i data-lucide="battery" style="width: 14px; height: 14px;"></i>
+        </div>
+      </div>
+
+      <!-- Header de l'app -->
+      <div class="app-header">
+        <span class="logo">PIH <span>Pulse</span></span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <div class="header-action">
+            <i data-lucide="bell" style="width: 16px; height: 16px;"></i>
+          </div>
+          <div class="header-action">
+            <i data-lucide="send" style="width: 14px; height: 14px; transform: rotate(30deg) translate(-1px, -1px);"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Corps de l'écran (Feed unifié, pas d'onglets de filtres en doublon) -->
+      <div class="screen-body" id="feed-container">
+        
+        <!-- Card 1: Nouveau Projet (CTA Jaune / Vedette) -->
+        <div class="card feed-item" data-type="project">
+          <div class="card-tag project">
+            <div class="dot"></div>
+            <span>Nouveau Projet</span>
+          </div>
+          <h2 class="card-title">WapiFood — Application de livraison de repas à Parakou</h2>
+          <div class="card-meta">
+            <div class="meta-item">
+              <i data-lucide="users" style="width: 12px; height: 12px; stroke-width: 2.5px;"></i>
+              <span>3/5 membres</span>
+            </div>
+            <div class="meta-item">
+              <i data-lucide="map-pin" style="width: 12px; height: 12px; stroke-width: 2.5px;"></i>
+              <span>Parakou</span>
+            </div>
+          </div>
+          <div class="card-action primary">
+            <span>Voir le projet</span>
+            <i data-lucide="chevron-right" style="width: 12px; height: 12px;"></i>
+          </div>
+        </div>
+
+        <!-- Card 2: Mission Ouverte (CTA Sobre) -->
+        <div class="card feed-item" data-type="mission">
+          <div class="card-tag mission">
+            <div class="dot"></div>
+            <span>Mission Ouverte</span>
+          </div>
+          <h2 class="card-title">Intégrer les paiements Mobile Money (MTN / Moov)</h2>
+          <div class="card-meta">
+            <div class="meta-item">
+              <i data-lucide="clock" style="width: 12px; height: 12px; stroke-width: 2.5px;"></i>
+              <span>7 jours</span>
+            </div>
+            <div class="meta-item">
+              <i data-lucide="award" style="width: 12px; height: 12px; stroke-width: 2.5px; color: var(--color-turmeric);"></i>
+              <span style="color: var(--color-creme); font-weight: 600;">+120 pts</span>
+            </div>
+          </div>
+          <div class="card-action">
+            <span>Postuler à la mission</span>
+            <i data-lucide="chevron-right" style="width: 12px; height: 12px;"></i>
+          </div>
+        </div>
+
+        <!-- Card 3: Événement -->
+        <div class="card feed-item" data-type="event">
+          <div class="card-tag event">
+            <div class="dot"></div>
+            <span>Événement à venir</span>
+          </div>
+          <h2 class="card-title">Hackathon FinTech Bénin — Parakou Innovation Hub</h2>
+          <div class="card-meta">
+            <div class="meta-item">
+              <i data-lucide="calendar" style="width: 12px; height: 12px; stroke-width: 2.5px;"></i>
+              <span>Samedi 15 Juillet 2026</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Barre de navigation basse (Layers icon pour Projets) -->
+      <div class="bottom-nav">
+        <div class="nav-item active">
+          <i data-lucide="home" style="width: 20px; height: 20px; stroke-width: 2px;"></i>
+          <span>Feed</span>
+        </div>
+        <div class="nav-item">
+          <i data-lucide="layers" style="width: 20px; height: 20px; stroke-width: 2px;"></i>
+          <span>Projets</span>
+        </div>
+        <div class="nav-item">
+          <i data-lucide="target" style="width: 20px; height: 20px; stroke-width: 2px;"></i>
+          <span>Missions</span>
+        </div>
+        <div class="nav-item">
+          <i data-lucide="users" style="width: 20px; height: 20px; stroke-width: 2px;"></i>
+          <span>Équipes</span>
+        </div>
+        <div class="nav-item">
+          <i data-lucide="user" style="width: 20px; height: 20px; stroke-width: 2px;"></i>
+          <span>Profil</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANNEAU DE CONTROLE DE THÈME (À CÔTÉ DU TÉLÉPHONE) -->
+    <div class="control-panel">
+      <h3>Contrôle du Thème</h3>
+      <p>Basculez entre le mode sombre officiel de l'application et la variante claire pour valider l'harmonie des contrastes et de l'identité.</p>
+      
+      <button onclick="toggleTheme()" class="toggle-btn">
+        <i id="theme-btn-icon" data-lucide="sun" style="width: 16px; height: 16px; stroke-width: 2.5px;"></i>
+        <span id="theme-btn-text">Passer au Mode Clair</span>
+      </button>
+
+      <div class="theme-info">
+        <span class="info-label">Infos Thème Actif</span>
+        <div id="theme-details" class="info-details">
+          • Univers : Sombre (Malt)<br>
+          • Fond : #0D0B05<br>
+          • Cartes : #18140B<br>
+          • Textes : #F5EDD6 / #A39171<br>
+          • Accent : #FFBE0B (Turmeric)
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Initialise les icônes Lucide
+  lucide.createIcons();
+
+  let isDarkMode = true;
+
+  function toggleTheme() {
+    const phone = document.getElementById('phone');
+    const btnIcon = document.getElementById('theme-btn-icon');
+    const btnText = document.getElementById('theme-btn-text');
+    const details = document.getElementById('theme-details');
+    
+    isDarkMode = !isDarkMode;
+    
+    if (isDarkMode) {
+      phone.classList.remove('light-mode');
+      btnText.textContent = "Passer au Mode Clair";
+      btnIcon.setAttribute('data-lucide', 'sun');
+      details.innerHTML = `
+        • Univers : Sombre (Malt)<br>
+        • Fond : #0D0B05<br>
+        • Cartes : #18140B<br>
+        • Textes : #F5EDD6 / #A39171<br>
+        • Accent : #FFBE0B (Turmeric)
+      `;
+    } else {
+      phone.classList.add('light-mode');
+      btnText.textContent = "Passer au Mode Sombre";
+      btnIcon.setAttribute('data-lucide', 'moon');
+      details.innerHTML = `
+        • Univers : Clair (Papier)<br>
+        • Fond : #F8F5EC<br>
+        • Cartes : #FFFFFF<br>
+        • Textes : #0D0B05 / #705F40<br>
+        • Accent : #D9A000 (Or)
+      `;
+    }
+    
+    // Ré-initialise les icônes Lucide pour appliquer les changements dynamiques
+    lucide.createIcons();
+  }
+</script>
+</body>
+</html>
