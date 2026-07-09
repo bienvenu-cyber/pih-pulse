@@ -1,12 +1,11 @@
 import { Tabs, useRouter } from 'expo-router';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, DeviceEventEmitter } from 'react-native';
 import { Bell, Send, Home, Layers, Target, Users, User } from 'lucide-react-native';
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import { supabase } from '../../lib/supabase';
 import { registerForPushNotificationsAsync, savePushToken } from '../../lib/notifications';
-
-import { DeviceEventEmitter } from 'react-native';
 
 export default function TabLayout() {
   const router = useRouter();
