@@ -1,5 +1,5 @@
 import { Tabs, useRouter } from 'expo-router';
-import { View, Pressable, DeviceEventEmitter } from 'react-native';
+import { View, Pressable, DeviceEventEmitter, Platform } from 'react-native';
 import { Bell, Send, Home, Layers, Target, Users, User } from 'lucide-react-native';
 import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
@@ -27,12 +27,20 @@ export default function TabLayout() {
     }
     setupNotifications();
 
-    // Load saved theme flavor
-    SecureStore.getItemAsync('theme_flavor').then((val) => {
-      if (val === 'oled' || val === 'malt' || val === 'light') {
-        setThemeFlavor(val as any);
+    // Load saved theme flavor safely (web compatibility)
+    async function loadSavedTheme() {
+      try {
+        const val = Platform.OS === 'web'
+          ? localStorage.getItem('theme_flavor')
+          : await SecureStore.getItemAsync('theme_flavor');
+        if (val === 'oled' || val === 'malt' || val === 'light') {
+          setThemeFlavor(val as any);
+        }
+      } catch (e) {
+        console.warn('Could not load theme flavor:', e);
       }
-    });
+    }
+    loadSavedTheme();
 
     // Listen for notification clicks and redirect accordingly
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {

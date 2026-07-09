@@ -3,7 +3,7 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { DeviceEventEmitter } from 'react-native';
+import { DeviceEventEmitter, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import 'react-native-reanimated';
 
@@ -24,6 +24,8 @@ export {
   ErrorBoundary,
 } from 'expo-router';
 
+export const stability = 'stable';
+
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
@@ -34,7 +36,6 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     SpaceGrotesk500: SpaceGrotesk_500Medium,
     SpaceGrotesk700: SpaceGrotesk_700Bold,
     Inter400: Inter_400Regular,
@@ -66,12 +67,20 @@ function RootLayoutNav() {
   const [themeFlavor, setThemeFlavor] = useState<'malt' | 'oled' | 'light'>('malt');
 
   useEffect(() => {
-    // Load saved theme flavor
-    SecureStore.getItemAsync('theme_flavor').then((val) => {
-      if (val === 'oled' || val === 'malt' || val === 'light') {
-        setThemeFlavor(val as any);
+    // Load saved theme flavor safely (web compatibility)
+    async function loadSavedTheme() {
+      try {
+        const val = Platform.OS === 'web'
+          ? localStorage.getItem('theme_flavor')
+          : await SecureStore.getItemAsync('theme_flavor');
+        if (val === 'oled' || val === 'malt' || val === 'light') {
+          setThemeFlavor(val as any);
+        }
+      } catch (e) {
+        console.warn('Could not load theme flavor:', e);
       }
-    });
+    }
+    loadSavedTheme();
 
     // Listen for changes
     const sub = DeviceEventEmitter.addListener('THEME_FLAVOR_CHANGED', (flavor) => {

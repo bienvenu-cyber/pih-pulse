@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, DeviceEventEmitter } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, DeviceEventEmitter, Platform } from 'react-native';
 import { Award, Layers, LogOut, CheckCircle, Clock, Palette, Bell, Lock, HelpCircle, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -12,7 +12,7 @@ export default function ProfileScreen() {
   const [myMissions, setMyMissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [headerVisible, setHeaderVisible] = useState(true);
-  const [themeFlavor, setThemeFlavor] = useState<'malt' | 'oled'>('malt');
+  const [themeFlavor, setThemeFlavor] = useState<'malt' | 'oled' | 'light'>('malt');
   const lastOffsetY = useRef(0);
   const router = useRouter();
 
@@ -32,11 +32,19 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     fetchProfileData();
-    SecureStore.getItemAsync('theme_flavor').then((val) => {
-      if (val === 'oled' || val === 'malt') {
-        setThemeFlavor(val);
+    async function loadSavedTheme() {
+      try {
+        const val = Platform.OS === 'web'
+          ? localStorage.getItem('theme_flavor')
+          : await SecureStore.getItemAsync('theme_flavor');
+        if (val === 'oled' || val === 'malt' || val === 'light') {
+          setThemeFlavor(val as any);
+        }
+      } catch (e) {
+        console.warn('Could not load theme flavor:', e);
       }
-    });
+    }
+    loadSavedTheme();
   }, []);
 
   const fetchProfileData = async () => {
@@ -90,9 +98,17 @@ export default function ProfileScreen() {
     router.replace('/login');
   };
 
-  const toggleThemeFlavor = async (flavor: 'malt' | 'oled') => {
+  const toggleThemeFlavor = async (flavor: 'malt' | 'oled' | 'light') => {
     setThemeFlavor(flavor);
-    await SecureStore.setItemAsync('theme_flavor', flavor);
+    try {
+      if (Platform.OS === 'web') {
+        localStorage.setItem('theme_flavor', flavor);
+      } else {
+        await SecureStore.setItemAsync('theme_flavor', flavor);
+      }
+    } catch (e) {
+      console.warn('Could not save theme flavor:', e);
+    }
     DeviceEventEmitter.emit('THEME_FLAVOR_CHANGED', flavor);
   };
 
