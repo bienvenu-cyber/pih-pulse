@@ -1,38 +1,63 @@
-import { ArrowLeft, Clock, Award, CheckCircle, ShieldCheck, UserCheck, AlertTriangle } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Award,
+  BadgeCheck,
+  CheckCircle,
+  Clock,
+  FileUp,
+  ShieldCheck,
+  UserCheck,
+  XCircle,
+} from 'lucide-react-native';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ReplySection from '../../components/ReplySection';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { formatDeadlineDate, formatDeadlineLabel } from '../../lib/deadline';
+import {
+  applyToMission,
+  approveApplication,
+  rejectApplication,
+  requestMissionChanges,
+  submitDeliverable,
+  validateMission,
+} from '../../lib/hub';
 import { supabase } from '../../lib/supabase';
 
-// Static fallback data
-const FALLBACK_MISSION = {
-  title: 'Intégrer les paiements Mobile Money (MTN / Moov)',
-  project: 'WapiFood',
-  projectId: '11111111-1111-1111-1111-111111111111',
-  reward: '+120 pts',
-  duration: '7 jours',
-  difficultyLabel: 'Difficile',
-  difficulty: 'hard',
-  description: 'Nous recherchons un développeur backend ou fullstack pour intégrer l’API de paiement MTN Mobile Money (MoMo API) et Moov Money dans notre serveur Node.js.',
-  tasks: [
-    'Configurer les Webhooks pour recevoir les notifications MTN / Moov.',
-    'Créer les routes API d’initiation de paiement et de callback.',
-    'Mettre à jour le statut de la commande en base de données.',
-    'Écrire des tests unitaires pour simuler les cas d’échec.'
-  ],
-  skills: ['Node.js', 'API REST', 'MTN MoMo API', 'Supabase'],
-  assigneeId: null,
-  status: 'open'
-};
+const LEAD_HINTS = ['founder', 'lead', 'creator'];
+
+function isLeadRole(role: string | null | undefined) {
+  const r = (role || '').toLowerCase();
+  return LEAD_HINTS.some((h) => r.includes(h));
+}
 
 export default function MissionDetailsScreen() {
+  const { colors } = useThemeFlavor();
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  
+
   const [mission, setMission] = useState<any>(null);
   const [meId, setMeId] = useState<string | null>(null);
+  const [isProjectLead, setIsProjectLead] = useState(false);
+  const [applications, setApplications] = useState<any[]>([]);
+  const [myApplication, setMyApplication] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [applying, setApplying] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [deliverableUrl, setDeliverableUrl] = useState('');
+  const [deliverableNote, setDeliverableNote] = useState('');
+  const [pitch, setPitch] = useState('');
 
-  // Custom premium modal alerts
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalMessage, setModalMessage] = useState('');
@@ -46,291 +71,662 @@ export default function MissionDetailsScreen() {
   };
 
   useEffect(() => {
-    fetchMissionDetails();
+    fetchAll();
   }, [id]);
 
-  const fetchMissionDetails = async () => {
+  const fetchAll = async () => {
     try {
-      // Get current user id
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setMeId(user.id);
-      }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) setMeId(user.id);
 
       const { data, error } = await supabase
         .from('missions')
-        .select('*, projects(id, name)')
+        .select(
+          '*, projects(id, name, creator_id), assignee:profiles!assignee_id(id, full_name)'
+        )
         .eq('id', id)
         .single();
 
-      if (error) {
-        console.error(error);
-        setMission(FALLBACK_MISSION);
+      if (error || !data) {
+        showModal('Erreur', error?.message || 'Mission introuvable', 'error');
         return;
       }
 
-      // Generate task list from description lines or use fallback
+      const project = data.projects as any;
+      const projectId = project?.id || '';
+      const creatorId = project?.creator_id || null;
+      const assignee = Array.isArray(data.assignee) ? data.assignee[0] : data.assignee;
+
       let tasksList = [
-        'Prendre connaissance du brief et des spécifications techniques.',
-        'Développer la solution en local et faire les tests d’intégration.',
-        'Soumettre le livrable et le code source sur GitHub pour validation.'
+        'Prendre connaissance du brief.',
+        'Développer et tester la solution.',
+        'Soumettre le livrable pour validation.',
       ];
-      if (data.description && data.description.includes('\n')) {
-        const lines = data.description.split('\n').map((l: string) => l.trim().replace(/^-\s*/, '')).filter((l: string) => l.length > 5);
-        if (lines.length > 1) {
-          tasksList = lines;
-        }
+      if (data.description?.includes('\n')) {
+        const lines = data.description
+          .split('\n')
+          .map((l: string) => l.trim().replace(/^-\s*/, ''))
+          .filter((l: string) => l.length > 5);
+        if (lines.length > 1) tasksList = lines;
       }
 
       setMission({
         id: data.id,
         title: data.title,
-        project: (data.projects as any)?.name || 'Projet',
-        projectId: (data.projects as any)?.id || '',
+        project: project?.name || 'Projet',
+        projectId,
+        creatorId,
         reward: `+${data.points_reward} pts`,
-        duration: '5 jours',
-        difficultyLabel: data.difficulty === 'hard' ? 'Difficile' : data.difficulty === 'medium' ? 'Moyen' : 'Facile',
+        rewardPoints: data.points_reward ?? 50,
+        duration: formatDeadlineLabel(data.deadline, 'Sans échéance'),
+        deadlineDate: formatDeadlineDate(data.deadline),
+        difficultyLabel:
+          data.difficulty === 'hard'
+            ? 'Difficile'
+            : data.difficulty === 'medium'
+              ? 'Moyen'
+              : 'Facile',
         difficulty: data.difficulty,
-        description: data.description || 'Aucune description fournie.',
+        description: data.description || 'Aucune description.',
         tasks: tasksList,
         skills: data.skills_required || [],
         assigneeId: data.assignee_id,
-        status: data.status
+        assigneeName: assignee?.full_name,
+        status: data.status,
+        deliverableUrl: data.deliverable_url,
+        deliverableNote: data.deliverable_note,
+        submittedAt: data.submitted_at,
       });
 
-    } catch (err) {
-      console.error(err);
-      setMission(FALLBACK_MISSION);
+      if (data.deliverable_url) setDeliverableUrl(data.deliverable_url);
+      if (data.deliverable_note) setDeliverableNote(data.deliverable_note);
+
+      // Lead?
+      let lead = !!(user && creatorId === user.id);
+      if (user && projectId && !lead) {
+        const { data: membership } = await supabase
+          .from('project_members')
+          .select('role')
+          .eq('project_id', projectId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        lead = isLeadRole(membership?.role);
+      }
+      setIsProjectLead(lead);
+
+      // Applications
+      if (user) {
+        const { data: apps } = await supabase
+          .from('mission_applications')
+          .select('*, applicant:profiles!applicant_id(id, full_name)')
+          .eq('mission_id', id)
+          .order('applied_at', { ascending: false });
+
+        const list = apps || [];
+        setApplications(list);
+        setMyApplication(list.find((a: any) => a.applicant_id === user.id) || null);
+      }
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBack = () => {
-    router.back();
-  };
-
-  const handleProjectPress = () => {
-    if (mission?.projectId) {
-      router.push(`/project/${mission.projectId}`);
-    }
-  };
-
-  const handleApplyMission = async () => {
+  const run = async (fn: () => Promise<{ error?: string }>, successTitle: string, successMsg: string) => {
+    setBusy(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        showModal("Connexion Requise", "Veuillez vous connecter pour postuler à cette mission.", "info");
-        return;
+      const res = await fn();
+      if (res.error) showModal('Erreur', res.error, 'error');
+      else {
+        showModal(successTitle, successMsg, 'success');
+        await fetchAll();
       }
-
-      setApplying(true);
-      const { error } = await supabase
-        .from('missions')
-        .update({
-          assignee_id: user.id,
-          status: 'in_progress'
-        })
-        .eq('id', id);
-
-      if (error) {
-        showModal("Une erreur est survenue", error.message, "error");
-      } else {
-        // Log reputation points (+20 points)
-        await supabase
-          .from('reputation_logs')
-          .insert({
-            user_id: user.id,
-            points: 20,
-            reason: `A accepté la mission : ${mission.title}`
-          });
-
-        showModal(
-          "Félicitations !", 
-          "Vous avez accepté cette mission. Elle est désormais en cours et apparaît dans votre profil. Votre réputation augmente de +20 pts !", 
-          "success"
-        );
-        fetchMissionDetails(); // Refresh details
-      }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      showModal('Erreur', 'Une erreur inattendue est survenue.', 'error');
     } finally {
-      setApplying(false);
+      setBusy(false);
     }
   };
 
   if (loading || !mission) {
     return (
-      <View className="flex-1 bg-malt-deep items-center justify-center">
-        <ActivityIndicator size="large" color="#FFBE0B" />
+      <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color={colors.turmeric} />
       </View>
     );
   }
 
-  // Difficulty colors
-  let difficultyClass = 'text-kaki bg-kaki/15 border-kaki/30';
-  if (mission.difficulty === 'medium') {
-    difficultyClass = 'text-turmeric bg-turmeric/10 border-turmeric/20';
-  } else if (mission.difficulty === 'hard') {
-    difficultyClass = 'text-corail bg-corail/15 border-corail/30';
-  }
-
-  // CTA State details
   const isAssignedToMe = mission.assigneeId === meId;
-  const isAssignedToOther = mission.assigneeId && mission.assigneeId !== meId;
+  const isOpen = mission.status === 'open';
+  const isInProgress = mission.status === 'in_progress';
+  const isReview = mission.status === 'review';
+  const isCompleted = mission.status === 'completed';
+  const myPending = myApplication?.status === 'pending';
+  const myRejected = myApplication?.status === 'rejected';
+
+  const statusLabel =
+    isCompleted
+      ? 'Complétée'
+      : isReview
+        ? 'En revue'
+        : isInProgress
+          ? 'En cours'
+          : isOpen
+            ? 'Ouverte'
+            : mission.status;
 
   return (
-    <SafeAreaView className="flex-1 bg-malt-deep">
-      {/* custom Header */}
-      <View className="h-14 flex-row items-center justify-between px-6 bg-malt-nav border-b border-malt">
-        <Pressable onPress={handleBack} className="w-9 h-9 rounded-full bg-malt-card border border-malt items-center justify-center">
-          <ArrowLeft size={18} color="#F5EDD6" />
+    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
+      <View
+        style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }}
+        className="h-14 flex-row items-center justify-between px-4 border-b"
+      >
+        <Pressable
+          onPress={() => router.back()}
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="w-10 h-10 rounded-full border items-center justify-center"
+        >
+          <ArrowLeft size={18} color={colors.text} />
         </Pressable>
-        <Text className="text-creme font-space text-base font-bold">Fiche Mission</Text>
-        <View className="w-9 h-9" />
+        <View className="flex-1 px-3 items-center">
+          <Text style={{ color: colors.text }} className="font-space text-base font-bold" numberOfLines={1}>
+            Mission
+          </Text>
+          <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]" numberOfLines={1}>
+            {mission.project} · {statusLabel}
+          </Text>
+        </View>
+        <View className="w-10 h-10" />
       </View>
 
-      <ScrollView 
+      <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Mission Header */}
-        <View className="gap-3 mb-6">
-          <View className="flex-row justify-between items-start">
-            <Pressable onPress={handleProjectPress} className="max-w-[70%]">
-              <Text className="text-sable font-inter text-xs font-semibold uppercase tracking-wider mb-1 underline">
-                Projet : {mission.project}
+        <View
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="border rounded-3xl p-5 gap-3 mb-4"
+        >
+          <Pressable onPress={() => mission.projectId && router.push(`/project/${mission.projectId}`)}>
+            <Text
+              style={{ color: colors.turmeric }}
+              className="font-inter text-[11px] font-bold uppercase tracking-wider"
+            >
+              {mission.project} →
+            </Text>
+          </Pressable>
+          <Text style={{ color: colors.text }} className="font-space text-[20px] font-bold leading-7">
+            {mission.title}
+          </Text>
+          <View className="flex-row gap-2 flex-wrap">
+            <View className="px-2.5 py-1 rounded-full bg-turmeric/15 border border-turmeric/25">
+              <Text style={{ color: colors.turmeric }} className="font-inter text-[10px] font-bold">
+                {statusLabel}
               </Text>
-            </Pressable>
-            <View className={`px-2.5 py-0.5 rounded-lg border ${difficultyClass}`}>
-              <Text className="font-inter text-[10px] font-semibold">
+            </View>
+            <View
+              style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+              className="px-2.5 py-1 rounded-full border"
+            >
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] font-bold">
                 {mission.difficultyLabel}
               </Text>
             </View>
           </View>
-
-          <Text className="text-creme font-space text-xl font-bold leading-7">
-            {mission.title}
-          </Text>
         </View>
 
-        {/* Stats Rewards Card */}
-        <View className="flex-row gap-4 mb-6">
-          {/* Points */}
-          <View className="flex-1 bg-malt-card border border-malt rounded-3xl p-5 gap-3">
-            <View className="flex-row justify-between items-center">
-              <Text className="text-sable font-inter text-[10px] font-bold uppercase tracking-wider">Récompense</Text>
-              <Award size={14} color="#FFBE0B" />
-            </View>
-            <Text className="text-creme font-space text-2xl font-bold">{mission.reward}</Text>
+        <View className="flex-row gap-3 mb-4">
+          <View
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="flex-1 border rounded-2xl p-4 gap-2"
+          >
+            <Award size={14} color={colors.turmeric} />
+            <Text style={{ color: colors.text }} className="font-space text-xl font-bold">
+              {mission.reward}
+            </Text>
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+              Impact récompense
+            </Text>
           </View>
-
-          {/* Duration */}
-          <View className="flex-1 bg-malt-card border border-malt rounded-3xl p-5 gap-3">
-            <View className="flex-row justify-between items-center">
-              <Text className="text-sable font-inter text-[10px] font-bold uppercase tracking-wider">Durée estimée</Text>
-              <Clock size={14} color="#A39171" />
-            </View>
-            <Text className="text-creme font-space text-2xl font-bold">{mission.duration}</Text>
+          <View
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="flex-1 border rounded-2xl p-4 gap-2"
+          >
+            <Clock size={14} color={colors.textSecondary} />
+            <Text style={{ color: colors.text }} className="font-space text-lg font-bold">
+              {mission.duration}
+            </Text>
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+              {mission.deadlineDate ? `Échéance ${mission.deadlineDate}` : 'Échéance'}
+            </Text>
           </View>
         </View>
 
-        {/* Required Skills */}
-        {mission.skills.length > 0 && (
-          <View className="bg-malt-card border border-malt rounded-3xl p-5 gap-3 mb-6">
-            <Text className="text-creme font-space text-[15px] font-bold">Compétences requises</Text>
-            <View className="flex-row flex-wrap gap-1.5">
-              {mission.skills.map((skill: string) => (
-                <View key={skill} className="bg-malt-deep px-3 py-1.5 rounded-xl border border-malt">
-                  <Text className="text-creme font-inter text-xs font-medium">{skill}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Mission Description */}
-        <View className="bg-malt-card border border-malt rounded-3xl p-5 gap-3 mb-6">
-          <Text className="text-creme font-space text-[15px] font-bold">Description de la mission</Text>
-          <Text className="text-sable font-inter text-sm leading-6">
-            {mission.description}
-          </Text>
-        </View>
-
-        {/* Tasks List */}
-        <View className="bg-malt-card border border-malt rounded-3xl p-5 gap-4 mb-6">
-          <Text className="text-creme font-space text-[15px] font-bold">Tâches à réaliser</Text>
-          <View className="gap-3">
-            {mission.tasks.map((task: string, index: number) => (
-              <View key={index} className="flex-row items-start gap-2.5">
-                <CheckCircle size={14} color="#7CB87A" style={{ marginTop: 2 }} />
-                <Text className="flex-1 text-sable font-inter text-sm leading-5">
-                  {task}
+        {mission.skills?.length > 0 ? (
+          <View className="flex-row flex-wrap gap-1.5 mb-4">
+            {mission.skills.map((skill: string) => (
+              <View
+                key={skill}
+                style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                className="border px-2.5 py-1 rounded-full"
+              >
+                <Text
+                  style={{ color: colors.textSecondary }}
+                  className="font-inter text-[10px] font-medium"
+                >
+                  {skill}
                 </Text>
               </View>
             ))}
           </View>
+        ) : null}
+
+        {mission.assigneeName ? (
+          <Text style={{ color: colors.textSecondary }} className="font-inter text-xs mb-4">
+            Assigné : {mission.assigneeName}
+          </Text>
+        ) : null}
+
+        <View
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="border rounded-2xl p-4 gap-2 mb-4"
+        >
+          <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
+            Description
+          </Text>
+          <Text style={{ color: colors.textSecondary }} className="font-inter text-sm leading-6">
+            {mission.description}
+          </Text>
         </View>
 
-        {/* Apply CTA */}
-        {isAssignedToMe ? (
-          <View className="bg-kaki/15 border border-kaki/30 h-14 rounded-2xl flex-row justify-center items-center gap-2 mt-2">
-            <UserCheck size={18} color="#7CB87A" strokeWidth={2.5} />
-            <Text className="text-kaki font-inter-bold text-base font-bold">
-              Mission acceptée (En cours)
-            </Text>
-          </View>
-        ) : isAssignedToOther ? (
-          <View className="bg-malt-card border border-malt h-14 rounded-2xl flex-row justify-center items-center gap-2 mt-2 opacity-50">
-            <UserCheck size={18} color="#A39171" strokeWidth={2.5} />
-            <Text className="text-sable font-inter-bold text-base font-bold">
-              Mission déjà attribuée
-            </Text>
-          </View>
-        ) : (
-          <Pressable 
-            onPress={handleApplyMission}
-            disabled={applying}
-            className="bg-turmeric h-14 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90 mt-2"
+        {/* Livrable affiché si soumis */}
+        {(mission.deliverableUrl || isReview || isCompleted) && mission.deliverableUrl ? (
+          <View
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="border rounded-2xl p-4 gap-2 mb-4"
           >
-            {applying ? (
-              <ActivityIndicator size="small" color="#0D0B05" />
-            ) : (
-              <>
-                <ShieldCheck size={18} color="#0D0B05" strokeWidth={2.5} />
-                <Text className="text-malt-deep font-inter-bold text-base font-bold">
-                  Accepter cette mission
-                </Text>
-              </>
-            )}
+            <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
+              Livrable
+            </Text>
+            <Pressable onPress={() => Linking.openURL(mission.deliverableUrl)}>
+              <Text style={{ color: colors.turmeric }} className="font-inter text-sm underline">
+                {mission.deliverableUrl}
+              </Text>
+            </Pressable>
+            {mission.deliverableNote ? (
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-xs leading-5">
+                {mission.deliverableNote}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* ── CTA contributeur : postuler ── */}
+        {isOpen && !isProjectLead && !myPending && !myRejected && !isAssignedToMe && (
+          <View className="gap-3 mb-3">
+            <TextInput
+              placeholder="Pitch court (optionnel)…"
+              placeholderTextColor={colors.textSecondary}
+              value={pitch}
+              onChangeText={setPitch}
+              multiline
+              style={{
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                color: colors.text,
+                minHeight: 72,
+              }}
+              className="border rounded-xl p-3 font-inter text-sm"
+            />
+            <Pressable
+              disabled={busy}
+              onPress={() =>
+                run(
+                  async () => {
+                    if (!meId) return { error: 'Connexion requise' };
+                    return applyToMission({
+                      missionId: String(id),
+                      applicantId: meId,
+                      missionTitle: mission.title,
+                      projectId: mission.projectId,
+                      pitch,
+                    });
+                  },
+                  'Candidature envoyée',
+                  'Le lead a été notifié. Tu seras prévenu si ta candidature est acceptée.'
+                )
+              }
+              className="bg-turmeric h-14 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90"
+            >
+              {busy ? (
+                <ActivityIndicator color="#0D0B05" />
+              ) : (
+                <>
+                  <ShieldCheck size={18} color="#0D0B05" strokeWidth={2.5} />
+                  <Text className="text-malt-deep font-inter-bold text-base font-bold">
+                    Postuler à cette mission
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        )}
+
+        {myPending && isOpen && (
+          <View className="bg-turmeric/10 border border-turmeric/25 h-14 rounded-2xl flex-row justify-center items-center gap-2 mb-3">
+            <Clock size={18} color={colors.turmeric} />
+            <Text style={{ color: colors.turmeric }} className="font-inter-bold text-sm font-bold">
+              Candidature en attente
+            </Text>
+          </View>
+        )}
+
+        {myRejected && isOpen && (
+          <View className="bg-corail/10 border border-corail/25 h-14 rounded-2xl flex-row justify-center items-center gap-2 mb-3">
+            <XCircle size={18} color="#E8634A" />
+            <Text className="text-corail font-inter-bold text-sm font-bold">
+              Candidature non retenue
+            </Text>
+          </View>
+        )}
+
+        {/* ── Lead : candidatures ── */}
+        {isProjectLead && isOpen && applications.filter((a) => a.status === 'pending').length > 0 && (
+          <View
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="border rounded-2xl p-4 gap-3 mb-4"
+          >
+            <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
+              Candidatures ({applications.filter((a) => a.status === 'pending').length})
+            </Text>
+            {applications
+              .filter((a) => a.status === 'pending')
+              .map((app) => {
+                const applicant = Array.isArray(app.applicant) ? app.applicant[0] : app.applicant;
+                const name = applicant?.full_name || 'Talent';
+                return (
+                  <View
+                    key={app.id}
+                    style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                    className="border rounded-xl p-3 gap-2"
+                  >
+                    <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+                      {name}
+                    </Text>
+                    {app.pitch ? (
+                      <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+                        {app.pitch}
+                      </Text>
+                    ) : null}
+                    <View className="flex-row gap-2 mt-1">
+                      <Pressable
+                        disabled={busy}
+                        onPress={() =>
+                          run(
+                            async () => {
+                              if (!meId) return { error: 'Erreur' };
+                              return approveApplication({
+                                applicationId: app.id,
+                                missionId: String(id),
+                                applicantId: app.applicant_id,
+                                missionTitle: mission.title,
+                                leadId: meId,
+                              });
+                            },
+                            'Candidat accepté',
+                            `${name} est assigné(e) à la mission.`
+                          )
+                        }
+                        className="flex-1 bg-kaki h-10 rounded-xl items-center justify-center"
+                      >
+                        <Text className="text-malt-deep font-inter-bold text-xs font-bold">
+                          Accepter
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        disabled={busy}
+                        onPress={() =>
+                          run(
+                            async () => {
+                              if (!meId) return { error: 'Erreur' };
+                              return rejectApplication({
+                                applicationId: app.id,
+                                applicantId: app.applicant_id,
+                                missionId: String(id),
+                                missionTitle: mission.title,
+                                leadId: meId,
+                              });
+                            },
+                            'Candidature refusée',
+                            'Le talent a été notifié.'
+                          )
+                        }
+                        style={{ borderColor: colors.border, backgroundColor: colors.card }}
+                        className="flex-1 border h-10 rounded-xl items-center justify-center"
+                      >
+                        <Text style={{ color: colors.textSecondary }} className="font-inter-bold text-xs font-bold">
+                          Refuser
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+          </View>
+        )}
+
+        {/* ── Contributeur : soumettre livrable ── */}
+        {isAssignedToMe && isInProgress && (
+          <View
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="border rounded-2xl p-4 gap-3 mb-4"
+          >
+            <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
+              Soumettre le livrable
+            </Text>
+            <TextInput
+              placeholder="Lien GitHub / Figma / Drive…"
+              placeholderTextColor={colors.textSecondary}
+              value={deliverableUrl}
+              onChangeText={setDeliverableUrl}
+              autoCapitalize="none"
+              style={{
+                backgroundColor: colors.deep,
+                borderColor: colors.border,
+                color: colors.text,
+              }}
+              className="border rounded-xl px-3 h-12 font-inter text-sm"
+            />
+            <TextInput
+              placeholder="Note pour le lead (optionnel)"
+              placeholderTextColor={colors.textSecondary}
+              value={deliverableNote}
+              onChangeText={setDeliverableNote}
+              multiline
+              style={{
+                backgroundColor: colors.deep,
+                borderColor: colors.border,
+                color: colors.text,
+                minHeight: 64,
+              }}
+              className="border rounded-xl p-3 font-inter text-sm"
+            />
+            <Pressable
+              disabled={busy}
+              onPress={() =>
+                run(
+                  async () => {
+                    if (!meId) return { error: 'Connexion requise' };
+                    return submitDeliverable({
+                      missionId: String(id),
+                      assigneeId: meId,
+                      missionTitle: mission.title,
+                      projectId: mission.projectId,
+                      url: deliverableUrl,
+                      note: deliverableNote,
+                    });
+                  },
+                  'Livrable envoyé',
+                  'Le lead a été notifié pour validation.'
+                )
+              }
+              className="bg-turmeric h-12 rounded-xl flex-row justify-center items-center gap-2"
+            >
+              {busy ? (
+                <ActivityIndicator color="#0D0B05" />
+              ) : (
+                <>
+                  <FileUp size={16} color="#0D0B05" />
+                  <Text className="text-malt-deep font-inter-bold text-sm font-bold">
+                    Envoyer pour validation
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        )}
+
+        {isAssignedToMe && isReview && (
+          <View className="bg-turmeric/10 border border-turmeric/25 h-14 rounded-2xl flex-row justify-center items-center gap-2 mb-3">
+            <UserCheck size={18} color={colors.turmeric} />
+            <Text style={{ color: colors.turmeric }} className="font-inter-bold text-sm font-bold">
+              Livrable en attente de validation
+            </Text>
+          </View>
+        )}
+
+        {isCompleted && (
+          <View className="bg-kaki/15 border border-kaki/30 h-14 rounded-2xl flex-row justify-center items-center gap-2 mb-3">
+            <CheckCircle size={18} color="#7CB87A" />
+            <Text className="text-kaki font-inter-bold text-base font-bold">Mission validée</Text>
+          </View>
+        )}
+
+        {/* ── Lead : valider / corrections ── */}
+        {isProjectLead && isReview && mission.assigneeId && (
+          <View className="gap-2 mt-2">
+            <Pressable
+              disabled={busy}
+              onPress={() =>
+                run(
+                  async () => {
+                    if (!meId) return { error: 'Erreur' };
+                    return validateMission({
+                      missionId: String(id),
+                      leadId: meId,
+                      assigneeId: mission.assigneeId,
+                      missionTitle: mission.title,
+                      pointsReward: mission.rewardPoints,
+                    });
+                  },
+                  'Mission validée !',
+                  `Contributeur : ${mission.reward} + 20 Impact. Toi (lead) : +15 Impact.`
+                )
+              }
+              className="bg-kaki h-14 rounded-2xl flex-row justify-center items-center gap-2"
+            >
+              {busy ? (
+                <ActivityIndicator color="#0D0B05" />
+              ) : (
+                <>
+                  <BadgeCheck size={18} color="#0D0B05" />
+                  <Text className="text-malt-deep font-inter-bold text-base font-bold">
+                    Valider la mission (+pts)
+                  </Text>
+                </>
+              )}
+            </Pressable>
+            <Pressable
+              disabled={busy}
+              onPress={() =>
+                run(
+                  async () => {
+                    if (!meId) return { error: 'Erreur' };
+                    return requestMissionChanges({
+                      missionId: String(id),
+                      leadId: meId,
+                      assigneeId: mission.assigneeId,
+                      missionTitle: mission.title,
+                    });
+                  },
+                  'Corrections demandées',
+                  'Le contributeur a été notifié.'
+                )
+              }
+              style={{ borderColor: colors.border, backgroundColor: colors.card }}
+              className="border h-12 rounded-2xl flex-row justify-center items-center"
+            >
+              <Text style={{ color: colors.textSecondary }} className="font-inter-bold text-sm font-bold">
+                Demander des corrections
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Lead can also validate from in_progress without formal submit */}
+        {isProjectLead && isInProgress && mission.assigneeId && (
+          <Pressable
+            disabled={busy}
+            onPress={() =>
+              run(
+                async () => {
+                  if (!meId) return { error: 'Erreur' };
+                  return validateMission({
+                    missionId: String(id),
+                    leadId: meId,
+                    assigneeId: mission.assigneeId,
+                    missionTitle: mission.title,
+                    pointsReward: mission.rewardPoints,
+                  });
+                },
+                'Mission validée !',
+                `Contributeur : ${mission.reward} + 20 Impact. Toi (lead) : +15 Impact.`
+              )
+            }
+            className="bg-kaki/90 h-12 rounded-2xl flex-row justify-center items-center gap-2 mt-3"
+          >
+            <BadgeCheck size={16} color="#0D0B05" />
+            <Text className="text-malt-deep font-inter-bold text-sm font-bold">
+              Valider sans revue formelle
+            </Text>
           </Pressable>
         )}
 
+        {mission?.id ? (
+          <View className="mt-4 mb-2">
+            <ReplySection refType="mission" refId={String(mission.id || id)} />
+          </View>
+        ) : null}
       </ScrollView>
 
-      {/* Custom Alert Modal */}
       {modalVisible && (
         <View className="absolute inset-0 bg-black/70 items-center justify-center z-50 px-6">
-          <View className="bg-malt-card border border-malt p-6 rounded-3xl w-full max-w-sm gap-4 items-center">
+          <View
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="border p-6 rounded-3xl w-full max-w-sm gap-4 items-center"
+          >
             {modalType === 'success' ? (
-              <View className="w-12 h-12 rounded-full bg-kaki/15 border border-kaki/30 items-center justify-center">
-                <CheckCircle size={24} color="#7CB87A" />
-              </View>
+              <CheckCircle size={28} color="#7CB87A" />
             ) : (
-              <View className="w-12 h-12 rounded-full bg-turmeric/10 border border-turmeric/30 items-center justify-center">
-                <AlertTriangle size={24} color="#FFBE0B" />
-              </View>
+              <AlertTriangle size={28} color={colors.turmeric} />
             )}
-            
-            <View className="items-center gap-1.5 w-full">
-              <Text className="text-creme font-space text-lg font-bold text-center">{modalTitle}</Text>
-              <Text className="text-sable font-inter text-xs text-center leading-5">{modalMessage}</Text>
-            </View>
-            
-            <Pressable 
+            <Text style={{ color: colors.text }} className="font-space text-lg font-bold text-center">
+              {modalTitle}
+            </Text>
+            <Text
+              style={{ color: colors.textSecondary }}
+              className="font-inter text-xs text-center leading-5"
+            >
+              {modalMessage}
+            </Text>
+            <Pressable
               onPress={() => setModalVisible(false)}
-              className="bg-turmeric w-full py-3 rounded-xl items-center justify-center active:opacity-90 mt-2"
+              className="bg-turmeric w-full py-3 rounded-xl items-center"
             >
               <Text className="text-malt-deep font-inter-bold text-sm font-bold">Compris</Text>
             </Pressable>

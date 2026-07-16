@@ -2,6 +2,11 @@
 
 Ce fichier sert de feuille de route pour le développement du projet. Cochez les cases au fur et à mesure de l'avancement.
 
+> **État produit (fin session 2026-07-16) :** V1 hub **feature-complete** côté code (sprints A–E + médias + notifs + seeds).  
+> **Source de vérité backlog :** [`AUDIT.md`](./AUDIT.md)  
+> **Go store / TestFlight :** [`SHIP.md`](./SHIP.md)  
+> **Prochaine priorité :** smoke device + EAS preview (pas de gros feature gap).
+
 ---
 
 ## 🛠️ Phase 1 : Initialisation & Structure de Base
@@ -15,7 +20,7 @@ Ce fichier sert de feuille de route pour le développement du projet. Cochez les
 
 ---
 
-## 🎨 Phase 2 : Validation Graphique & Thèmes (En Cours)
+## 🎨 Phase 2 : Validation Graphique & Thèmes
 - `[x]` Valider le thème de couleurs ("Premium Turmeric & Malt" validé)
 - `[x]` Mettre à jour `tailwind.config.js` et `AGENTS.md` selon le thème final retenu
 - `[x]` Importer et configurer les polices d'écriture personnalisées (Space Grotesk, Inter)
@@ -68,3 +73,30 @@ Ce fichier sert de feuille de route pour le développement du projet. Cochez les
 - `[x]` Ajouter la gestion des notifications push essentielles (Expo Push Notifications)
 - `[x]` Configurer EAS Build pour la compilation de l'application
 - `[x]` Générer les builds APK/AAB pour Android et TestFlight pour iOS
+
+---
+
+## ✨ Phase 7 : V1.1 — Gamification & Polish (15 juil. 2026)
+- `[x]` Niveaux uniques (Starter → Fondateur) affichés comme badge compact sur la carte profil
+- `[x]` Grille multi-badges retirée (un seul axe : le niveau lié aux points)
+- `[x]` Pull-to-refresh + pagination Feed
+- `[x]` Guards auth sur `/project/create` et `/mission/create`
+- `[x]` Schéma Supabase unifié (`supabase_schema.sql` source de vérité)
+- `[x]` Validation mission par le Lead (+ points_reward + bonus 20 pts)
+- `[x]` Reset mot de passe par code OTP (forgot-password → reset-password)
+- `[x]` Feed / Projets / Missions : header auteur type hub (avatar, temps relatif) + ReactionBar sociale
+- `[x]` Boucle validation 100% : candidature → approve → livrable → review → validation + points
+- `[x]` activity_notifications + push + deep links
+- `[x]` Feed intelligent : Tout / Pour moi / Mes équipes + ranking boosts
+
+---
+
+## 🏁 Phase 8 : V1.1+ hub polish (16 juil. 2026) — livré code
+
+- `[x]` Sprints A–E (P0 listes, data forms, feed, collab, polish)
+- `[x]` Posts caption unique (plus titre + corps)
+- `[x]` MediaCarousel cover / thumbs vidéo / lightbox
+- `[x]` Notifs réactions + chat projet + realtime badges
+- `[x]` Seeds posts (`supabase_seeds_posts.sql`)
+- `[ ]` EAS preview + smoke store (`SHIP.md`)
+- `[ ]` Édition projet lead (backlog P1 optionnel)

@@ -43,3 +43,6 @@ yarn-error.*
 # Env files
 .env
 
+# OAuth credentials (sensitive)
+OAUTH_CONFIG.md
+

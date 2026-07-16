@@ -1,36 +1,35 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { Search, Award, Send } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { Award, Search, Send, Users } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  FlatList,
+  Image,
+  Pressable,
+  RefreshControl,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import CollapsibleHeader, {
+  useCollapsibleHeaderOffset,
+  useTabListBottomPadding,
+} from '../../components/CollapsibleHeader';
+import EmptyState from '../../components/ui/EmptyState';
+import ListSkeleton from '../../components/ui/ListSkeleton';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { formatLevelBadge, getLevelProgress } from '../../lib/reputation';
 import { supabase } from '../../lib/supabase';
-import CollapsibleHeader from '../../components/CollapsibleHeader';
-
-// Static fallback data
-const STATIC_TALENTS = [
-  {
-    id: '11111111-1111-1111-1111-111111111111',
-    name: 'Inès Lawani',
-    role: 'UI/UX Designer',
-    points: 240,
-    skills: ['Figma', 'Prototypage', 'Wireframing', 'Illustrator'],
-    initials: 'IL',
-  },
-  {
-    id: '22222222-2222-2222-2222-222222222222',
-    name: 'Koffi Attignon',
-    role: 'Fullstack Developer',
-    points: 380,
-    skills: ['React Native', 'TypeScript', 'Node.js', 'Supabase'],
-    initials: 'KA',
-  }
-];
 
 export default function TeamsScreen() {
   const router = useRouter();
   const [talents, setTalents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [headerVisible, setHeaderVisible] = useState(true);
+  const { colors } = useThemeFlavor();
+  const headerOffset = useCollapsibleHeaderOffset();
+  const listBottom = useTabListBottomPadding();
   const lastOffsetY = useRef(0);
 
   const handleScroll = (event: any) => {
@@ -51,18 +50,38 @@ export default function TeamsScreen() {
     fetchTalents();
   }, []);
 
-  const fetchTalents = async () => {
+  const fetchTalents = async (mode: 'init' | 'refresh' = 'init') => {
+    if (mode === 'refresh') setRefreshing(true);
     try {
-      const { data, error } = await supabase
+      // available_for_missions optionnel (migration prefs) — fallback soft
+      let data: any[] | null = null;
+      let error: { message?: string } | null = null;
+
+      const full = await supabase
         .from('profiles')
-        .select('*')
-        .order('reputation_points', { ascending: false });
+        .select(
+          'id, full_name, role, skills, reputation_points, avatar_url, bio, available_for_missions'
+        )
+        .order('reputation_points', { ascending: false })
+        .limit(80);
+
+      if (full.error) {
+        const basic = await supabase
+          .from('profiles')
+          .select('id, full_name, role, skills, reputation_points, avatar_url, bio')
+          .order('reputation_points', { ascending: false })
+          .limit(80);
+        data = basic.data;
+        error = basic.error;
+      } else {
+        data = full.data;
+      }
 
       if (error) {
         console.error(error);
-        setTalents(STATIC_TALENTS);
+        setTalents([]);
       } else {
-        const formatted = data.map((prof: any) => {
+        const formatted = (data || []).map((prof: any) => {
           const name = prof.full_name || 'Talent';
           const initials = name
             .split(' ')
@@ -70,29 +89,32 @@ export default function TeamsScreen() {
             .join('')
             .slice(0, 2)
             .toUpperCase() || 'T';
-
-          // Format role label cleanly
           const roleRaw = prof.role || 'developer';
-          const roleFormatted = roleRaw === 'product_creator' 
-            ? 'Product Owner' 
+          const roleFormatted = roleRaw === 'product_creator'
+            ? 'Product Owner'
             : roleRaw.charAt(0).toUpperCase() + roleRaw.slice(1);
-
           return {
             id: prof.id,
-            name: name,
+            name,
             role: roleFormatted,
             points: prof.reputation_points ?? 0,
-            skills: prof.skills || [],
-            initials: initials,
+            skills: (prof.skills || []).slice(0, 8),
+            skillsTotal: (prof.skills || []).length,
+            initials,
+            avatarUrl: prof.avatar_url || null,
+            levelLabel: formatLevelBadge(getLevelProgress(prof.reputation_points ?? 0).level),
+            // Défaut ON si colonne absente
+            available: prof.available_for_missions !== false,
           };
         });
         setTalents(formatted);
       }
     } catch (err) {
       console.error(err);
-      setTalents(STATIC_TALENTS);
+      setTalents([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -102,118 +124,173 @@ export default function TeamsScreen() {
            talent.skills.some((skill: string) => skill.toLowerCase().includes(search.toLowerCase()));
   });
 
-  if (loading) {
-    return (
-      <View className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color="#FFBE0B" />
+  const listHeader = (
+    <View className="mb-3">
+      <View
+        style={{ backgroundColor: colors.card, borderColor: colors.border }}
+        className="flex-row items-center h-12 rounded-xl border px-3 gap-2"
+      >
+        <Search size={16} color={colors.textSecondary} />
+        <TextInput
+          placeholder="Rechercher un talent ou une compétence..."
+          placeholderTextColor={colors.textSecondary}
+          value={search}
+          onChangeText={setSearch}
+          style={{ color: colors.text }}
+          className="flex-1 font-inter text-sm h-full"
+          accessibilityLabel="Rechercher un talent"
+        />
       </View>
-    );
-  }
+    </View>
+  );
 
   return (
-    <View className="flex-1">
-      <CollapsibleHeader title="Équipes" visible={headerVisible} />
+    <View className="flex-1" style={{ backgroundColor: colors.bg }}>
+      <CollapsibleHeader title="Talents" visible={headerVisible} />
 
-      {/* Talents List */}
-      <ScrollView 
-        className="flex-1"
-        contentContainerStyle={{ padding: 20, paddingTop: 76, paddingBottom: 80, gap: 16 }}
-        showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-      >
-        {/* Search Header (Now scrolls naturally!) */}
-        <View className="gap-3 mb-2">
-          <View className="flex-row items-center h-12 rounded-xl border px-3 gap-2 bg-malt-card border-malt">
-            <Search size={16} color="#A39171" />
-            <TextInput
-              placeholder="Rechercher un talent ou une compétence..."
-              placeholderTextColor="#A39171"
-              value={search}
-              onChangeText={setSearch}
-              className="flex-1 text-creme font-inter text-sm h-full"
-            />
-          </View>
+      {loading ? (
+        <View style={{ padding: 16, paddingTop: headerOffset + 12 }}>
+          {listHeader}
+          <ListSkeleton count={5} variant="row" />
         </View>
-        {filteredTalents.length > 0 ? (
-          filteredTalents.map(talent => (
-            <Pressable 
-              key={talent.id}
-              onPress={() => router.push(`/profile/${talent.id}`)}
-              style={{ backdropFilter: 'blur(12px)', webkitBackdropFilter: 'blur(12px)' } as any}
-              className="bg-malt-card/80 border border-malt/60 rounded-3xl p-5 gap-4 active:opacity-95"
+      ) : (
+        <FlatList
+          data={filteredTalents}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{
+            padding: 16,
+            paddingTop: headerOffset + 12,
+            paddingBottom: listBottom,
+            gap: 12,
+            flexGrow: 1,
+          }}
+          showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchTalents('refresh')}
+              tintColor={colors.turmeric}
+              colors={[colors.turmeric]}
+            />
+          }
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={
+            <EmptyState
+              icon={Users}
+              title={search ? 'Aucun résultat' : 'Aucun talent pour l’instant'}
+              description={
+                search
+                  ? 'Aucun talent ne correspond à ta recherche.'
+                  : 'Les profils de la communauté PIH apparaîtront ici.'
+              }
+            />
+          }
+          renderItem={({ item: talent }) => (
+            // View racine (pas Pressable) → évite <button> imbriqués sur web
+            <View
+              style={{ backgroundColor: colors.card, borderColor: colors.border }}
+              className="border rounded-3xl p-5 gap-4"
             >
-              {/* Profile Card Header */}
-              <View className="flex-row justify-between items-center">
-                <View className="flex-row items-center gap-3">
-                  {/* Initials Avatar */}
-                  <View className="w-12 h-12 rounded-full bg-malt-deep border border-malt items-center justify-center">
-                    <Text className="text-creme font-space text-sm font-bold">
-                      {talent.initials}
-                    </Text>
+              <Pressable
+                onPress={() => router.push(`/profile/${talent.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Profil de ${talent.name}`}
+                className="gap-4 active:opacity-95"
+              >
+                <View className="flex-row justify-between items-center">
+                  <View className="flex-row items-center gap-3">
+                    <View
+                      style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                      className="w-12 h-12 rounded-full border items-center justify-center overflow-hidden"
+                    >
+                      {talent.avatarUrl ? (
+                        <Image source={{ uri: talent.avatarUrl }} style={{ width: 48, height: 48 }} />
+                      ) : (
+                        <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+                          {talent.initials}
+                        </Text>
+                      )}
+                    </View>
+                    <View>
+                      <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
+                        {talent.name}
+                      </Text>
+                      <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+                        {talent.role}
+                      </Text>
+                    </View>
                   </View>
-                  
-                  {/* User info */}
-                  <View>
-                    <Text className="text-creme font-space text-[15px] font-bold">
-                      {talent.name}
+                  <View className="flex-row items-center gap-1">
+                    <Award size={12} color={colors.textSecondary} />
+                    <Text style={{ color: colors.text }} className="font-inter text-xs font-semibold">
+                      {talent.points} Impact
                     </Text>
-                    <Text className="text-sable font-inter text-xs">
-                      {talent.role}
-                    </Text>
+                    {talent.levelLabel ? (
+                      <Text
+                        style={{ color: colors.textSecondary }}
+                        className="font-inter text-[9px] font-bold"
+                      >
+                        {talent.levelLabel}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
 
-                {/* Score */}
-                <View className="flex-row items-center gap-1">
-                  <Award size={12} color="#FFBE0B" />
-                  <Text className="text-creme font-inter text-xs font-semibold">
-                    {talent.points} pts
-                  </Text>
-                </View>
-              </View>
-
-              {/* Skills Tags */}
-              <View className="flex-row flex-wrap gap-1.5">
-                {talent.skills.map((skill: string) => (
-                  <View 
-                    key={skill}
-                    className="bg-malt-deep px-2.5 py-1 rounded-lg border border-malt"
-                  >
-                    <Text className="text-sable font-inter text-[10px] font-medium">
-                      {skill}
+                <View className="flex-row flex-wrap gap-1.5">
+                  {talent.skills.map((skill: string) => (
+                    <View
+                      key={skill}
+                      style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                      className="px-2.5 py-1 rounded-lg border"
+                    >
+                      <Text
+                        style={{ color: colors.textSecondary }}
+                        className="font-inter text-[10px] font-medium"
+                      >
+                        {skill}
+                      </Text>
+                    </View>
+                  ))}
+                  {talent.skillsTotal > talent.skills.length ? (
+                    <Text
+                      style={{ color: colors.textSecondary }}
+                      className="font-inter text-[10px] self-center"
+                    >
+                      +{talent.skillsTotal - talent.skills.length}
                     </Text>
-                  </View>
-                ))}
-              </View>
+                  ) : null}
+                </View>
+              </Pressable>
 
-              {/* Divider */}
-              <View className="h-[1px] bg-malt/50" />
+              <View style={{ backgroundColor: colors.border, opacity: 0.6 }} className="h-[1px]" />
 
-              {/* Actions Footer */}
               <View className="flex-row justify-between items-center">
-                <Text className="text-sable font-inter text-[10px]">
-                  Disponible pour projets
-                </Text>
-                
-                {/* CTA Action */}
-                <View 
-                  className="bg-malt-deep border border-malt flex-row items-center gap-1.5 px-4 py-2 rounded-full"
+                <Text
+                  style={{ color: talent.available ? colors.kaki : colors.textSecondary }}
+                  className="font-inter text-[10px] font-semibold"
                 >
-                  <Text className="text-creme font-inter-bold text-[10px] font-bold">
+                  {talent.available ? 'Dispo missions' : 'Indisponible'}
+                </Text>
+                <Pressable
+                  onPress={() => router.push(`/chat/${talent.id}`)}
+                  hitSlop={8}
+                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                  className="border flex-row items-center gap-1.5 px-4 py-2 rounded-full active:opacity-80"
+                  accessibilityRole="button"
+                  accessibilityLabel={`Contacter ${talent.name}`}
+                >
+                  <Text style={{ color: colors.text }} className="font-inter text-[10px] font-bold">
                     Contacter
                   </Text>
-                  <Send size={10} color="#F5EDD6" style={{ transform: [{ rotate: '30deg' }] }} />
-                </View>
+                  <Send size={10} color={colors.text} style={{ transform: [{ rotate: '30deg' }] }} />
+                </Pressable>
               </View>
-            </Pressable>
-          ))
-        ) : (
-          <View className="items-center py-12">
-            <Text className="text-sable font-inter text-sm">Aucun talent trouvé.</Text>
-          </View>
-        )}
-      </ScrollView>
+            </View>
+          )}
+        />
+      )}
     </View>
   );
 }

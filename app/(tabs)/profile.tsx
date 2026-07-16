@@ -1,453 +1,929 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, DeviceEventEmitter, Platform } from 'react-native';
-import { Award, Layers, LogOut, CheckCircle, Clock, Palette, Bell, Lock, HelpCircle, ChevronRight } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import {
+  Camera,
+  CheckCircle,
+  ChevronRight,
+  CircleDot,
+  ExternalLink,
+  Link2,
+  LogOut,
+  Palette,
+  QrCode,
+  Settings2,
+  Share2,
+  Shield,
+  Sparkles,
+  TrendingUp,
+  UserRound,
+} from 'lucide-react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  DeviceEventEmitter,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  Text,
+  View,
+} from 'react-native';
+import CollapsibleHeader, {
+  useCollapsibleHeaderOffset,
+  useTabListBottomPadding,
+} from '../../components/CollapsibleHeader';
+import ProfileToggles, {
+  isUserOnline,
+  type ProfileToggleKey,
+  type ProfileToggleState,
+} from '../../components/ProfileToggles';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { tryGrantProfileCompleteBonus } from '../../lib/hub';
+import { getProfileCompleteness, IMPACT_POINTS } from '../../lib/impact';
+import { pickAndUploadAvatar } from '../../lib/media';
+import {
+  disablePushNotifications,
+  enablePushNotifications,
+} from '../../lib/notifications';
+import { formatLevelName, getLevelProgress } from '../../lib/reputation';
 import { supabase } from '../../lib/supabase';
-import CollapsibleHeader from '../../components/CollapsibleHeader';
+import type { ThemeFlavor } from '../../lib/theme';
+import QRCode from 'react-native-qrcode-svg';
+
+type MenuItem = {
+  key: string;
+  label: string;
+  subtitle: string;
+  icon: any;
+  route?: string;
+};
+
+type ProfileStats = {
+  projects: number;
+  missionsDone: number;
+  posts: number;
+};
+
+type MyProject = {
+  id: string;
+  name: string;
+  status: string;
+  role: string;
+  isLead: boolean;
+};
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
-  const [projectsCount, setProjectsCount] = useState(0);
-  const [myMissions, setMyMissions] = useState<any[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [stats, setStats] = useState<ProfileStats>({
+    projects: 0,
+    missionsDone: 0,
+    posts: 0,
+  });
+  const [myProjects, setMyProjects] = useState<MyProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [toggleBusy, setToggleBusy] = useState<ProfileToggleKey | null>(null);
+  /** Source de vérité UI des contrôles (indépendante des colonnes DB manquantes) */
+  const [toggles, setToggles] = useState<ProfileToggleState>({
+    available_for_missions: true,
+    show_online_presence: true,
+    push_enabled: true,
+    reminders_enabled: true,
+  });
+  const [shareOpen, setShareOpen] = useState(false);
   const [headerVisible, setHeaderVisible] = useState(true);
-  const [themeFlavor, setThemeFlavor] = useState<'malt' | 'oled' | 'light'>('malt');
+  const { flavor: themeFlavor, colors } = useThemeFlavor();
+  const headerOffset = useCollapsibleHeaderOffset();
+  const listBottom = useTabListBottomPadding();
   const lastOffsetY = useRef(0);
   const router = useRouter();
 
   const handleScroll = (event: any) => {
-    const currentOffsetY = event.nativeEvent.contentOffset.y;
-    if (currentOffsetY <= 10) {
+    const y = event.nativeEvent.contentOffset.y;
+    if (y <= 10) {
       setHeaderVisible(true);
       return;
     }
-    if (currentOffsetY > lastOffsetY.current + 15) {
-      setHeaderVisible(false);
-    } else if (currentOffsetY < lastOffsetY.current - 15) {
-      setHeaderVisible(true);
-    }
-    lastOffsetY.current = currentOffsetY;
+    if (y > lastOffsetY.current + 15) setHeaderVisible(false);
+    else if (y < lastOffsetY.current - 15) setHeaderVisible(true);
+    lastOffsetY.current = y;
   };
 
-  useEffect(() => {
-    fetchProfileData();
-    async function loadSavedTheme() {
-      try {
-        const val = Platform.OS === 'web'
-          ? localStorage.getItem('theme_flavor')
-          : await SecureStore.getItemAsync('theme_flavor');
-        if (val === 'oled' || val === 'malt' || val === 'light') {
-          setThemeFlavor(val as any);
-        }
-      } catch (e) {
-        console.warn('Could not load theme flavor:', e);
-      }
-    }
-    loadSavedTheme();
-  }, []);
-
-  const fetchProfileData = async () => {
+  const fetchProfileData = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         router.replace('/login');
         return;
       }
+      setUserId(user.id);
+      setEmail(user.email || '');
 
-      // 1. Fetch user's profiles
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (!error && data) {
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (data) {
         setProfile(data);
+        // Sync toggles depuis DB (défaut ON si null / colonne absente)
+        setToggles({
+          available_for_missions: data.available_for_missions !== false,
+          show_online_presence: data.show_online_presence !== false,
+          // Préférence push seule — pas besoin de token pour afficher ON
+          push_enabled: data.push_enabled !== false,
+          reminders_enabled: data.reminders_enabled !== false,
+        });
+        // Crédit +20 si profil désormais complet (1×) puis refresh
+        if (!data.impact_profile_bonus) {
+          const granted = await tryGrantProfileCompleteBonus(user.id);
+          const { data: refreshed } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+          if (refreshed) {
+            setProfile(refreshed);
+          } else if (granted) {
+            setProfile({ ...data, impact_profile_bonus: true });
+          }
+        }
       }
 
-      // 2. Fetch user's projects count
-      const { data: projects, error: projError } = await supabase
-        .from('project_members')
-        .select('project_id')
-        .eq('user_id', user.id);
+      const [membershipsRes, mDoneRes, postsRes, ownedRes] = await Promise.all([
+        supabase
+          .from('project_members')
+          .select('role, projects(id, name, status, created_at)')
+          .eq('user_id', user.id),
+        supabase
+          .from('missions')
+          .select('id', { count: 'exact', head: true })
+          .eq('assignee_id', user.id)
+          .eq('status', 'completed'),
+        supabase
+          .from('posts')
+          .select('id', { count: 'exact', head: true })
+          .eq('author_id', user.id),
+        supabase
+          .from('projects')
+          .select('id, name, status, created_at')
+          .eq('creator_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(12),
+      ]);
 
-      if (!projError && projects) {
-        setProjectsCount(projects.length);
-      }
+      // Projets carousel (membres + owned, dédup, lead en premier)
+      const byId = new Map<string, MyProject>();
+      (ownedRes.data || []).forEach((p: any) => {
+        byId.set(p.id, {
+          id: p.id,
+          name: p.name,
+          status: p.status || 'idea',
+          role: 'Lead',
+          isLead: true,
+        });
+      });
+      (membershipsRes.data || []).forEach((m: any) => {
+        const p = Array.isArray(m.projects) ? m.projects[0] : m.projects;
+        if (!p?.id) return;
+        const role = (m.role || 'Membre').toString();
+        const isLead =
+          role.toLowerCase().includes('founder') ||
+          role.toLowerCase().includes('lead') ||
+          role.toLowerCase().includes('creator');
+        const existing = byId.get(p.id);
+        if (!existing) {
+          byId.set(p.id, {
+            id: p.id,
+            name: p.name,
+            status: p.status || 'idea',
+            role,
+            isLead,
+          });
+        } else if (isLead) {
+          existing.isLead = true;
+          existing.role = role;
+        }
+      });
+      const projectsList = Array.from(byId.values()).sort((a, b) => {
+        if (a.isLead !== b.isLead) return a.isLead ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      setMyProjects(projectsList);
 
-      // 3. Fetch user's assigned missions
-      const { data: missions, error: missError } = await supabase
-        .from('missions')
-        .select('id, title, status, points_reward, projects(name)')
-        .eq('assignee_id', user.id);
-
-      if (!missError && missions) {
-        setMyMissions(missions);
-      }
-
-    } catch (err) {
-      console.error(err);
+      setStats({
+        projects: projectsList.length,
+        missionsDone: mDoneRes.count ?? 0,
+        posts: postsRes.count ?? 0,
+      });
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchProfileData();
+    }, [fetchProfileData])
+  );
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace('/login');
   };
 
-  const toggleThemeFlavor = async (flavor: 'malt' | 'oled' | 'light') => {
-    setThemeFlavor(flavor);
+  const setTheme = async (flavor: ThemeFlavor) => {
     try {
-      if (Platform.OS === 'web') {
-        localStorage.setItem('theme_flavor', flavor);
-      } else {
-        await SecureStore.setItemAsync('theme_flavor', flavor);
-      }
-    } catch (e) {
-      console.warn('Could not save theme flavor:', e);
+      if (Platform.OS === 'web') localStorage.setItem('theme_flavor', flavor);
+      else await SecureStore.setItemAsync('theme_flavor', flavor);
+    } catch {
+      /* ignore */
     }
     DeviceEventEmitter.emit('THEME_FLAVOR_CHANGED', flavor);
   };
 
+  const handleAvatarUpload = async () => {
+    if (!userId) return;
+    setAvatarBusy(true);
+    try {
+      const url = await pickAndUploadAvatar(userId);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_url: url, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (error) throw error;
+      setProfile((p: any) => ({ ...p, avatar_url: url }));
+      await tryGrantProfileCompleteBonus(userId);
+      await fetchProfileData();
+    } catch (e: any) {
+      if (e?.message !== 'CANCELLED') console.warn(e?.message || e);
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleToggle = async (key: ProfileToggleKey, next: boolean) => {
+    if (!userId) return;
+    if (toggleBusy === key) return;
+
+    setToggleBusy(key);
+    const prevToggles = { ...toggles };
+
+    // Optimistic UI immédiat
+    setToggles((t) => ({ ...t, [key]: next }));
+    setProfile((p: any) => (p ? { ...p, [key]: next } : p));
+
+    try {
+      if (key === 'push_enabled') {
+        if (next) {
+          const res = await enablePushNotifications(userId);
+          if (!res.ok) {
+            setToggles(prevToggles);
+            setProfile((p: any) => (p ? { ...p, push_enabled: false } : p));
+          } else if (res.token) {
+            setProfile((p: any) =>
+              p ? { ...p, push_enabled: true, expo_push_token: res.token } : p
+            );
+          }
+        } else {
+          const ok = await disablePushNotifications(userId);
+          if (!ok) {
+            setToggles(prevToggles);
+            setProfile((p: any) => (p ? { ...p, push_enabled: true } : p));
+          } else {
+            setProfile((p: any) =>
+              p ? { ...p, push_enabled: false, expo_push_token: null } : p
+            );
+          }
+        }
+      } else {
+        const payload: Record<string, unknown> = { [key]: next };
+        // Activer la présence → marquer actif tout de suite (badge public)
+        if (key === 'show_online_presence' && next) {
+          payload.last_seen_at = new Date().toISOString();
+        }
+        const { error } = await supabase
+          .from('profiles')
+          .update(payload)
+          .eq('id', userId);
+        if (error) {
+          // Colonnes absentes (migration non jouée) : on garde l’état local
+          console.warn('[toggles] persist failed, state local only:', error.message);
+        } else if (key === 'show_online_presence' && next) {
+          setProfile((p: any) =>
+            p ? { ...p, last_seen_at: payload.last_seen_at } : p
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('[toggles]', e);
+      setToggles(prevToggles);
+    } finally {
+      setToggleBusy(null);
+    }
+  };
+
+  const profileUrl =
+    userId && Platform.OS === 'web' && typeof window !== 'undefined'
+      ? `${window.location.origin}/profile/${userId}`
+      : userId
+        ? `pihpulse://profile/${userId}`
+        : '';
+
+  const shareProfile = async () => {
+    if (!userId) return;
+    try {
+      await Share.share({
+        message: `Mon profil PIH Pulse — ${name}\n${profileUrl}`,
+        title: 'Profil PIH Pulse',
+        url: profileUrl,
+      });
+    } catch {
+      setShareOpen(true);
+    }
+  };
+
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color="#FFBE0B" />
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.turmeric} />
       </View>
     );
   }
 
   const name = profile?.full_name || 'Utilisateur';
-  const username = profile?.username ? `@${profile.username}` : '@sans_nom';
-  const roleLabel = profile?.role 
-    ? (profile.role === 'product_creator' ? 'Product Owner' : profile.role.charAt(0).toUpperCase() + profile.role.slice(1))
-    : 'Développeur';
-  const points = profile?.reputation_points ?? 20;
-  const skills = profile?.skills || [];
-  const bio = profile?.bio || 'Aucune biographie rédigée pour le moment.';
+  const username = profile?.username ? `@${profile.username}` : '';
+  const roleLabel = profile?.role
+    ? profile.role === 'product_creator'
+      ? 'Product Owner'
+      : profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
+    : 'Membre';
+  const points = profile?.reputation_points ?? 0;
+  const level = getLevelProgress(points);
+  const bio = (profile?.bio || '').trim();
+  const skills: string[] = profile?.skills || [];
+  const completeness = getProfileCompleteness(profile || {});
+  // Bannière : seulement si incomplet ET bonus pas encore crédité
+  const showCompleteCta = completeness.showCta;
+  const available = toggles.available_for_missions;
+  const onlineSelf = isUserOnline(
+    toggles.show_online_presence,
+    profile?.last_seen_at || new Date().toISOString()
+  );
 
-  const initials = name
-    .split(' ')
-    .map((n: string) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'U';
+  const initials =
+    name
+      .split(' ')
+      .map((n: string) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'U';
 
-  const isLight = themeFlavor === 'light';
-  
-  const colors = {
-    bg: isLight ? '#F8F5EC' : (themeFlavor === 'oled' ? '#000000' : '#0D0B05'),
-    card: isLight ? '#FFFFFF' : (themeFlavor === 'oled' ? '#0A0A0A' : '#18140B'),
-    border: isLight ? '#E6DCBD' : (themeFlavor === 'oled' ? '#1F1F1F' : '#261F12'),
-    text: isLight ? '#0D0B05' : '#F5EDD6',
-    sable: isLight ? '#705F40' : '#A39171',
-    deepBg: isLight ? '#F0EAD6' : (themeFlavor === 'oled' ? '#000000' : '#0D0B05'),
-    turmeric: isLight ? '#D9A000' : '#FFBE0B',
+  const menu: MenuItem[] = [
+    {
+      key: 'edit',
+      label: 'Informations',
+      subtitle: 'Nom, bio, téléphone, compétences',
+      icon: UserRound,
+      route: '/profile/edit',
+    },
+    {
+      key: 'impact',
+      label: 'Historique Impact',
+      subtitle: `${points} pts · mouvements & niveau`,
+      icon: TrendingUp,
+      route: '/profile/impact',
+    },
+    {
+      key: 'settings',
+      label: 'Préférences',
+      subtitle: 'Push, langue',
+      icon: Settings2,
+      route: '/profile/settings',
+    },
+    {
+      key: 'security',
+      label: 'Sécurité',
+      subtitle: 'E-mail et mot de passe',
+      icon: Shield,
+      route: '/profile/security',
+    },
+    {
+      key: 'portfolio',
+      label: 'Portfolio',
+      subtitle: 'GitHub, Figma, LinkedIn…',
+      icon: Link2,
+      route: '/profile/portfolio',
+    },
+  ];
+
+  const themes: { id: ThemeFlavor; label: string }[] = [
+    { id: 'malt', label: 'Malt' },
+    { id: 'oled', label: 'OLED' },
+    { id: 'light', label: 'Clair' },
+  ];
+
+  const statusLabel = (s: string) => {
+    if (s === 'mvp') return 'MVP';
+    if (s === 'prototype') return 'Prototype';
+    if (s === 'scale') return 'Lancé';
+    return 'Idée';
   };
 
   return (
-    <View 
-      className="flex-1"
-      style={{ backgroundColor: colors.bg }}
-    >
+    <View className="flex-1" style={{ backgroundColor: colors.bg }}>
       <CollapsibleHeader title="Profil" visible={headerVisible} />
-      
-      <ScrollView 
+
+      <ScrollView
         className="flex-1"
-        style={{ backgroundColor: colors.bg }}
-        contentContainerStyle={{ padding: 20, paddingTop: 76, paddingBottom: 80 }}
+        contentContainerStyle={{
+          padding: 16,
+          paddingTop: headerOffset + 12,
+          paddingBottom: listBottom,
+        }}
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
-        {/* Profile Header Card */}
-        <View 
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 flex-row items-center gap-4 mb-6"
-        >
-          {/* Left: Initials Avatar */}
-          <View 
-            style={{ backgroundColor: colors.deepBg, borderColor: colors.border }}
-            className="w-16 h-16 rounded-full border items-center justify-center"
+        {/* CTA profil incomplet — compact */}
+        {showCompleteCta ? (
+          <Pressable
+            onPress={() => router.push('/profile/edit')}
+            style={{
+              backgroundColor: colors.turmeric + '12',
+              borderColor: colors.turmeric + '40',
+            }}
+            className="border rounded-xl px-3 py-2 mb-3 flex-row items-center gap-2.5 active:opacity-90"
           >
-            <Text style={{ color: colors.text }} className="font-space text-2xl font-bold">
-              {initials}
+            <Sparkles size={14} color={colors.turmeric} strokeWidth={2.3} />
+            <Text style={{ color: colors.text }} className="font-inter text-[11px] font-semibold flex-1">
+              Profil incomplet · +{IMPACT_POINTS.profileComplete} Impact
+              {completeness.missingLabels.length
+                ? ` · ${completeness.missingLabels.join(', ')}`
+                : ''}
             </Text>
-          </View>
-          
-          {/* Right: User Details */}
-          <View className="flex-1 gap-1">
-            <Text style={{ color: colors.text }} className="font-space text-base font-bold">
-              {name}
-            </Text>
-            <Text style={{ color: colors.sable }} className="font-inter text-xs">
-              {username}
-            </Text>
-            <View 
-              style={{ backgroundColor: isLight ? 'rgba(217, 160, 0, 0.1)' : 'rgba(255, 190, 11, 0.1)', borderColor: isLight ? 'rgba(217, 160, 0, 0.2)' : 'rgba(255, 190, 11, 0.2)' }}
-              className="border px-2 py-0.5 rounded mt-0.5 self-start"
+            <ChevronRight size={14} color={colors.turmeric} />
+          </Pressable>
+        ) : null}
+
+        {/* Hero */}
+        <View
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="border rounded-2xl p-4 mb-3 overflow-hidden"
+        >
+          <View className="flex-row items-start gap-3.5">
+            <Pressable onPress={handleAvatarUpload} disabled={avatarBusy} className="relative">
+              <View
+                style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                className="w-[72px] h-[72px] rounded-full border overflow-hidden items-center justify-center"
+              >
+                {profile?.avatar_url ? (
+                  <Image
+                    source={{ uri: profile.avatar_url }}
+                    style={{ width: 72, height: 72 }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={{ color: colors.text }} className="font-space text-2xl font-bold">
+                    {initials}
+                  </Text>
+                )}
+              </View>
+              <View className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-turmeric items-center justify-center">
+                {avatarBusy ? (
+                  <ActivityIndicator size={10} color="#0D0B05" />
+                ) : (
+                  <Camera size={12} color="#0D0B05" />
+                )}
+              </View>
+            </Pressable>
+
+            <View className="flex-1 gap-0.5 min-w-0 pr-1">
+              <Text
+                style={{ color: colors.text }}
+                className="font-space text-lg font-bold"
+                numberOfLines={1}
+              >
+                {name}
+              </Text>
+              {username ? (
+                <Text
+                  style={{ color: colors.textSecondary }}
+                  className="font-inter text-xs"
+                  numberOfLines={1}
+                >
+                  {username}
+                </Text>
+              ) : null}
+              <View className="flex-row flex-wrap items-center gap-1.5 mt-1">
+                <View
+                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                  className="border px-2 py-0.5 rounded-full"
+                >
+                  <Text
+                    style={{ color: colors.textSecondary }}
+                    className="font-inter text-[10px] font-bold uppercase"
+                  >
+                    {roleLabel}
+                  </Text>
+                </View>
+                {available ? (
+                  <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-kaki/15 border border-kaki/30">
+                    <CircleDot size={10} color={colors.kaki} />
+                    <Text style={{ color: colors.kaki }} className="font-inter text-[10px] font-bold">
+                      Dispo
+                    </Text>
+                  </View>
+                ) : null}
+                {onlineSelf ? (
+                  <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-kaki/15 border border-kaki/30">
+                    <View className="w-1.5 h-1.5 rounded-full bg-kaki" />
+                    <Text style={{ color: colors.kaki }} className="font-inter text-[10px] font-bold">
+                      En ligne
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+
+            <Pressable
+              onPress={() => router.push('/profile/impact')}
+              hitSlop={6}
+              style={{
+                borderColor: colors.turmeric + '50',
+                transform: [{ rotate: '12deg' }],
+              }}
+              className="mt-1 mr-0.5 px-3 py-1.5 rounded-md border active:opacity-80"
             >
-              <Text style={{ color: colors.turmeric }} className="font-inter-semibold text-[8px] font-bold uppercase tracking-wider">
-                {roleLabel}
+              <Text
+                style={{ color: colors.turmeric, letterSpacing: 1.4 }}
+                className="font-space text-[12px] font-bold uppercase"
+              >
+                {formatLevelName(level.level)}
               </Text>
-            </View>
+            </Pressable>
           </View>
-        </View>
 
-        {/* Scoreboard / Stats Grid */}
-        <View className="flex-row gap-4 mb-6">
-          {/* Reputation Score Card */}
-          <View 
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="flex-1 border rounded-3xl p-5 justify-between gap-4"
+          <View className="flex-row gap-2 mt-3.5">
+            {userId ? (
+              <Pressable
+                onPress={() => router.push(`/profile/${userId}`)}
+                style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                className="flex-1 border rounded-xl h-10 flex-row items-center justify-center gap-1.5 active:opacity-85"
+              >
+                <ExternalLink size={13} color={colors.turmeric} />
+                <Text style={{ color: colors.text }} className="font-inter text-[11px] font-bold">
+                  Profil public
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={shareProfile}
+              style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+              className="w-10 h-10 border rounded-xl items-center justify-center active:opacity-85"
+            >
+              <Share2 size={15} color={colors.textSecondary} />
+            </Pressable>
+            <Pressable
+              onPress={() => setShareOpen(true)}
+              style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+              className="w-10 h-10 border rounded-xl items-center justify-center active:opacity-85"
+            >
+              <QrCode size={15} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+
+          {/* Stats principales */}
+          <View
+            className="flex-row mt-3.5 pt-3"
+            style={{ borderTopWidth: 1, borderTopColor: colors.border }}
           >
-            <View className="flex-row justify-between items-center">
-              <Text style={{ color: colors.sable }} className="font-inter text-[10px] font-bold uppercase tracking-wider">
-                Réputation
-              </Text>
-              <Award size={14} color={colors.turmeric} />
-            </View>
-            <View>
-              <Text style={{ color: colors.text }} className="font-space text-3xl font-bold mb-1">
-                {points}
-              </Text>
-              <Text style={{ color: colors.sable }} className="font-inter text-xs">
-                points totaux
-              </Text>
-            </View>
+            {[
+              { v: points, l: 'Impact', go: () => router.push('/profile/impact') },
+              { v: stats.projects, l: 'projets' },
+              { v: stats.missionsDone, l: 'validées' },
+              { v: stats.posts, l: 'posts' },
+            ].map((s, i) => (
+              <Pressable
+                key={s.l}
+                onPress={s.go}
+                className="flex-1 items-center"
+                style={i > 0 ? { borderLeftWidth: 1, borderLeftColor: colors.border } : undefined}
+              >
+                <Text style={{ color: colors.text }} className="font-space text-base font-bold">
+                  {s.v}
+                </Text>
+                <Text
+                  style={{ color: s.go ? colors.turmeric : colors.textSecondary }}
+                  className="font-inter text-[9px] font-semibold"
+                >
+                  {s.l}
+                </Text>
+              </Pressable>
+            ))}
           </View>
 
-          {/* Stats Card */}
-          <View 
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="flex-1 border rounded-3xl p-5 justify-between gap-4"
-          >
-            <View className="flex-row justify-between items-center">
-              <Text style={{ color: colors.sable }} className="font-inter text-[10px] font-bold uppercase tracking-wider">
-                Mon Activité
+          {level.nextLevel ? (
+            <View className="mt-3 gap-1">
+              <View
+                style={{ backgroundColor: colors.deep }}
+                className="h-1.5 rounded-full overflow-hidden"
+              >
+                <View
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${level.progressPercent}%`,
+                    backgroundColor: colors.turmeric,
+                  }}
+                />
+              </View>
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+                {level.pointsToNext} Impact → {level.nextLevel.name}
               </Text>
-              <Layers size={14} color={colors.sable} />
             </View>
-            <View className="gap-2">
-              <View className="flex-row justify-between">
-                <Text style={{ color: colors.sable }} className="font-inter text-xs">Projets :</Text>
-                <Text style={{ color: colors.text }} className="font-inter-bold text-xs font-bold">{projectsCount}</Text>
-              </View>
-              <View className="flex-row justify-between">
-                <Text style={{ color: colors.sable }} className="font-inter text-xs">Missions :</Text>
-                <Text style={{ color: colors.text }} className="font-inter-bold text-xs font-bold">{myMissions.length}</Text>
-              </View>
-            </View>
+          ) : null}
+        </View>
+
+        {/* Bio + skills */}
+        <View
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="border rounded-2xl p-4 mb-3 gap-3"
+        >
+          <View className="flex-row items-center justify-between">
+            <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+              À propos
+            </Text>
+            <Pressable
+              onPress={() => router.push('/profile/edit')}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Modifier le profil"
+            >
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px] font-bold">
+                Modifier
+              </Text>
+            </Pressable>
           </View>
-        </View>
-
-        {/* Bio / Bio Detail Card */}
-        <View 
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 gap-3 mb-6"
-        >
-          <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">À propos de moi</Text>
-          <Text style={{ color: colors.sable }} className="font-inter text-sm leading-6">
-            {bio}
-          </Text>
-        </View>
-
-        {/* Skills Section */}
-        <View 
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 gap-4 mb-6"
-        >
-          <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
-            Mes Compétences
-          </Text>
+          {bio ? (
+            <Text
+              style={{ color: colors.textSecondary }}
+              className="font-inter text-[13px] leading-5"
+              numberOfLines={4}
+            >
+              {bio}
+            </Text>
+          ) : (
+            <Pressable onPress={() => router.push('/profile/edit')}>
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[12px] italic">
+                Ajoute une bio pour te présenter au hub…
+              </Text>
+            </Pressable>
+          )}
           {skills.length > 0 ? (
             <View className="flex-row flex-wrap gap-1.5">
-              {skills.map((skill: string) => (
-                <View 
-                  key={skill}
-                  style={{ backgroundColor: colors.deepBg, borderColor: colors.border }}
-                  className="px-3 py-1.5 rounded-xl border"
+              {skills.slice(0, 12).map((s) => (
+                <View
+                  key={s}
+                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                  className="border px-2.5 py-1 rounded-full"
                 >
-                  <Text style={{ color: colors.text }} className="font-inter text-xs font-medium">
-                    {skill}
+                  <Text
+                    style={{ color: colors.textSecondary }}
+                    className="font-inter text-[11px] font-medium"
+                  >
+                    {s}
                   </Text>
                 </View>
               ))}
             </View>
           ) : (
-            <Text style={{ color: colors.sable }} className="font-inter text-xs">
-              Aucune compétence renseignée.
-            </Text>
+            <Pressable onPress={() => router.push('/profile/edit')}>
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[12px] italic">
+                Ajoute des compétences pour le matching
+              </Text>
+            </Pressable>
           )}
         </View>
 
-        {/* My Missions List */}
-        {myMissions.length > 0 && (
-          <View 
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-3xl p-5 gap-4 mb-6"
-          >
-            <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">Missions assignées</Text>
-            <View className="gap-3">
-              {myMissions.map((miss: any) => {
-                const pName = miss.projects?.name || 'Projet';
-                const isDone = miss.status === 'completed';
-                return (
-                  <View 
-                    key={miss.id} 
-                    style={{ backgroundColor: colors.deepBg, borderColor: colors.border }}
-                    className="flex-row items-center justify-between border p-3.5 rounded-2xl"
+        {/* Mes projets — carrousel */}
+        {myProjects.length > 0 ? (
+          <View className="mb-3">
+            <Text
+              style={{ color: colors.textSecondary }}
+              className="font-inter text-[11px] font-bold uppercase tracking-wider mb-2 px-0.5"
+            >
+              Mes projets
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 10, paddingRight: 8 }}
+            >
+              {myProjects.map((p) => (
+                <Pressable
+                  key={p.id}
+                  onPress={() => router.push(`/project/${p.id}`)}
+                  style={{
+                    backgroundColor: colors.card,
+                    borderColor: p.isLead ? colors.turmeric + '55' : colors.border,
+                    width: 168,
+                  }}
+                  className="border rounded-2xl p-3.5 active:opacity-90"
+                >
+                  <Text
+                    style={{ color: colors.text }}
+                    className="font-space text-[13px] font-bold"
+                    numberOfLines={2}
                   >
-                    <View className="flex-1 pr-3 gap-1">
-                      <Text style={{ color: colors.sable }} className="font-inter text-[9px] uppercase font-bold tracking-wider">
-                        {pName}
-                      </Text>
-                      <Text style={{ color: colors.text }} className="font-space text-xs font-bold leading-5">
-                        {miss.title}
+                    {p.name}
+                  </Text>
+                  <View className="flex-row items-center gap-1.5 mt-2 flex-wrap">
+                    <View
+                      className="px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: colors.deep }}
+                    >
+                      <Text
+                        style={{ color: colors.textSecondary }}
+                        className="font-inter text-[9px] font-bold"
+                      >
+                        {statusLabel(p.status)}
                       </Text>
                     </View>
-
-                    <View className="items-end gap-1.5">
-                      <Text style={{ color: colors.turmeric }} className="font-inter-semibold text-xs font-semibold">
-                        +{miss.points_reward} pts
+                    {p.isLead ? (
+                      <Text style={{ color: colors.turmeric }} className="font-inter text-[9px] font-bold">
+                        Lead
                       </Text>
-                      <View className="flex-row items-center gap-1">
-                        {isDone ? (
-                          <>
-                            <CheckCircle size={10} color="#7CB87A" />
-                            <Text className="text-kaki font-inter text-[10px]">Validée</Text>
-                          </>
-                        ) : (
-                          <>
-                            <Clock size={10} color={colors.turmeric} />
-                            <Text style={{ color: colors.turmeric }} className="font-inter text-[10px]">En cours</Text>
-                          </>
-                        )}
-                      </View>
-                    </View>
+                    ) : null}
                   </View>
-                );
-              })}
-            </View>
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
-        )}
+        ) : null}
 
-        {/* Theme Customizer Card */}
-        <View 
+        {/* Menu (infos, impact, portfolio…) */}
+        <View
           style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 gap-4 mb-6"
+          className="border rounded-2xl overflow-hidden mb-3"
+        >
+          {menu.map((item, idx) => {
+            const Icon = item.icon;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => router.push(item.route as any)}
+                style={{
+                  borderBottomWidth: idx < menu.length - 1 ? 1 : 0,
+                  borderBottomColor: colors.border,
+                }}
+                className="flex-row items-center px-4 py-3.5 gap-3 active:opacity-80"
+              >
+                <View
+                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                  className="w-9 h-9 rounded-xl border items-center justify-center"
+                >
+                  <Icon size={16} color={colors.textSecondary} />
+                </View>
+                <View className="flex-1">
+                  <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+                    {item.label}
+                  </Text>
+                  <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px]">
+                    {item.subtitle}
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={colors.textSecondary} />
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Contrôles — bas de page, fermé par défaut */}
+        <ProfileToggles
+          values={toggles}
+          busyKey={toggleBusy}
+          onToggle={handleToggle}
+          defaultOpen={false}
+        />
+
+        {/* Thème */}
+        <View
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="border rounded-2xl p-4 mb-4 gap-3"
         >
           <View className="flex-row items-center gap-2">
-            <Palette size={16} color={colors.turmeric} />
-            <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">Apparence de l'app</Text>
+            <Palette size={15} color={colors.turmeric} />
+            <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+              Apparence
+            </Text>
           </View>
-          
-          <Text style={{ color: colors.sable }} className="font-inter text-xs leading-5">
-            Sélectionnez votre style de thème. Vous pouvez basculer entre nos saveurs sombres exclusives ou notre thème papier clair.
-          </Text>
-          
-          <View className="gap-2 mt-1">
-            {/* Malt Premium (Sombre Doré) */}
-            <Pressable
-              onPress={() => toggleThemeFlavor('malt')}
-              style={{ 
-                backgroundColor: themeFlavor === 'malt' ? colors.turmeric : colors.deepBg,
-                borderColor: themeFlavor === 'malt' ? colors.turmeric : colors.border
-              }}
-              className="flex-row justify-between items-center px-4 h-12 rounded-xl border"
-            >
-              <Text 
-                style={{ color: themeFlavor === 'malt' ? '#0D0B05' : colors.text }}
-                className="font-inter text-xs font-bold"
-              >
-                Malt Premium (Sombre Doré)
-              </Text>
-              {themeFlavor === 'malt' && <CheckCircle size={14} color="#0D0B05" />}
-            </Pressable>
-
-            {/* Noir Absolu OLED */}
-            <Pressable
-              onPress={() => toggleThemeFlavor('oled')}
-              style={{ 
-                backgroundColor: themeFlavor === 'oled' ? colors.turmeric : colors.deepBg,
-                borderColor: themeFlavor === 'oled' ? colors.turmeric : colors.border
-              }}
-              className="flex-row justify-between items-center px-4 h-12 rounded-xl border"
-            >
-              <Text 
-                style={{ color: themeFlavor === 'oled' ? '#0D0B05' : colors.text }}
-                className="font-inter text-xs font-bold"
-              >
-                Noir Absolu OLED (Sombre Noir)
-              </Text>
-              {themeFlavor === 'oled' && <CheckCircle size={14} color="#0D0B05" />}
-            </Pressable>
-
-            {/* Papier & Or (Mode Clair) */}
-            <Pressable
-              onPress={() => toggleThemeFlavor('light')}
-              style={{ 
-                backgroundColor: themeFlavor === 'light' ? colors.turmeric : colors.deepBg,
-                borderColor: themeFlavor === 'light' ? colors.turmeric : colors.border
-              }}
-              className="flex-row justify-between items-center px-4 h-12 rounded-xl border"
-            >
-              <Text 
-                style={{ color: themeFlavor === 'light' ? '#0D0B05' : colors.text }}
-                className="font-inter text-xs font-bold"
-              >
-                Papier & Or (Mode Clair)
-              </Text>
-              {themeFlavor === 'light' && <CheckCircle size={14} color="#0D0B05" />}
-            </Pressable>
+          <View className="flex-row gap-2">
+            {themes.map((t) => {
+              const active = themeFlavor === t.id;
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => setTheme(t.id)}
+                  style={{
+                    backgroundColor: active ? colors.turmeric : colors.deep,
+                    borderColor: active ? colors.turmeric : colors.border,
+                  }}
+                  className="flex-1 py-2.5 rounded-xl border items-center flex-row justify-center gap-1"
+                >
+                  {active ? <CheckCircle size={12} color={colors.onTurmeric} /> : null}
+                  <Text
+                    style={{ color: active ? colors.onTurmeric : colors.textSecondary }}
+                    className="font-inter text-xs font-bold"
+                  >
+                    {t.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
-        {/* Preferences / Options Card */}
-        <View 
+        <View
           style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 gap-1 mb-6"
+          className="border rounded-2xl p-4 mb-4 gap-1"
         >
-          <View className="flex-row items-center gap-2 px-1 py-2 mb-2">
-            <Bell size={16} color={colors.sable} />
-            <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">Options de compte</Text>
-          </View>
-
-          <Pressable 
-            style={{ borderBottomColor: isLight ? 'rgba(230, 220, 189, 0.4)' : 'rgba(38, 31, 18, 0.4)' }}
-            className="flex-row justify-between items-center py-3 border-b active:opacity-80"
+          <Text
+            style={{ color: colors.textSecondary }}
+            className="font-inter text-[10px] uppercase font-bold"
           >
-            <View className="flex-row items-center gap-3">
-              <Lock size={14} color={colors.sable} />
-              <Text style={{ color: colors.text }} className="font-inter text-xs">Sécurité & Connexion</Text>
-            </View>
-            <ChevronRight size={14} color={colors.sable} />
-          </Pressable>
-
-          <Pressable className="flex-row justify-between items-center py-3 active:opacity-80">
-            <View className="flex-row items-center gap-3">
-              <HelpCircle size={14} color={colors.sable} />
-              <Text style={{ color: colors.text }} className="font-inter text-xs">Centre d'aide & FAQ</Text>
-            </View>
-            <ChevronRight size={14} color={colors.sable} />
-          </Pressable>
+            Compte
+          </Text>
+          <Text style={{ color: colors.text }} className="font-inter text-sm">
+            {email || '—'}
+          </Text>
+          {profile?.phone ? (
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-xs mt-0.5">
+              {profile.phone}
+            </Text>
+          ) : null}
         </View>
 
-        {/* Disconnect CTA */}
-        <Pressable 
+        <Pressable
           onPress={handleLogout}
-          className="bg-corail/10 border border-corail/25 h-14 rounded-2xl flex-row justify-center items-center gap-2 active:bg-corail/20 mt-4"
+          className="bg-corail/10 border border-corail/25 h-12 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90"
         >
           <LogOut size={16} color="#E8634A" />
-          <Text className="text-corail font-inter-bold text-base font-bold">
-            Se déconnecter
-          </Text>
+          <Text className="text-corail font-inter-bold text-sm font-bold">Se déconnecter</Text>
         </Pressable>
-
       </ScrollView>
+
+      {/* QR / partage */}
+      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+        <Pressable
+          className="flex-1 justify-center px-8"
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          onPress={() => setShareOpen(false)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation?.()}
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="border rounded-3xl p-5 items-center gap-3"
+          >
+            <Text style={{ color: colors.text }} className="font-space text-base font-bold">
+              Partager mon profil
+            </Text>
+            {profileUrl ? (
+              <View
+                style={{ backgroundColor: '#FFFFFF', borderRadius: 12, padding: 10 }}
+                accessibilityLabel="QR code du profil"
+              >
+                <QRCode
+                  value={profileUrl}
+                  size={148}
+                  backgroundColor="#FFFFFF"
+                  color="#0D0B05"
+                  ecl="M"
+                />
+              </View>
+            ) : null}
+            <Text
+              style={{ color: colors.textSecondary }}
+              className="font-inter text-[11px] text-center"
+              numberOfLines={2}
+            >
+              {profileUrl}
+            </Text>
+            <Pressable
+              onPress={shareProfile}
+              className="bg-turmeric h-11 rounded-xl w-full items-center justify-center flex-row gap-2"
+            >
+              <Share2 size={16} color="#0D0B05" />
+              <Text className="font-inter text-sm font-bold" style={{ color: '#0D0B05' }}>
+                Partager
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

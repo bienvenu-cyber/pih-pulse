@@ -1,147 +1,116 @@
-import { Tabs, useRouter } from 'expo-router';
-import { View, Pressable, DeviceEventEmitter, Platform } from 'react-native';
-import { Bell, Send, Home, Layers, Target, Users, User } from 'lucide-react-native';
-import { useState, useEffect } from 'react';
-import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
-import { supabase } from '../../lib/supabase';
+import { Tabs, useRouter } from 'expo-router';
+import { Home, Layers, Target, User, Users } from 'lucide-react-native';
+import { useEffect } from 'react';
+import { AppState, Platform, type AppStateStatus } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { registerForPushNotificationsAsync, savePushToken } from '../../lib/notifications';
+import { PRESENCE_HEARTBEAT_MS, touchLastSeen } from '../../lib/presence';
+import { supabase } from '../../lib/supabase';
 
 export default function TabLayout() {
   const router = useRouter();
-  const [themeFlavor, setThemeFlavor] = useState<'malt' | 'oled' | 'light'>('malt');
+  const { colors } = useThemeFlavor();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 52 + Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 6);
 
   useEffect(() => {
     async function setupNotifications() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) return;
-
+        const { data: pref } = await supabase
+          .from('profiles')
+          .select('push_enabled')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (pref?.push_enabled === false) return;
         const token = await registerForPushNotificationsAsync();
-        if (token) {
-          await savePushToken(user.id, token);
-        }
+        if (token) await savePushToken(user.id, token);
       } catch (error) {
         console.error('Error setting up push notifications on mount:', error);
       }
     }
     setupNotifications();
 
-    // Load saved theme flavor safely (web compatibility)
-    async function loadSavedTheme() {
-      try {
-        const val = Platform.OS === 'web'
-          ? localStorage.getItem('theme_flavor')
-          : await SecureStore.getItemAsync('theme_flavor');
-        if (val === 'oled' || val === 'malt' || val === 'light') {
-          setThemeFlavor(val as any);
-        }
-      } catch (e) {
-        console.warn('Could not load theme flavor:', e);
-      }
-    }
-    loadSavedTheme();
-
-    // Listen for notification clicks and redirect accordingly
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const route = response.notification.request.content.data?.route;
-      if (route) {
-        router.push(route);
-      }
+      if (route) router.push(route as any);
     });
 
-    // Listen for theme flavor changes
-    const subTheme = DeviceEventEmitter.addListener('THEME_FLAVOR_CHANGED', (flavor) => {
-      if (flavor === 'oled' || flavor === 'malt' || flavor === 'light') {
-        setThemeFlavor(flavor);
+    return () => subscription.remove();
+  }, [router]);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const startHeartbeat = () => {
+      void touchLastSeen();
+      if (interval) clearInterval(interval);
+      interval = setInterval(() => {
+        void touchLastSeen();
+      }, PRESENCE_HEARTBEAT_MS);
+    };
+
+    const stopHeartbeat = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
       }
-    });
+    };
+
+    startHeartbeat();
+
+    const onAppState = (state: AppStateStatus) => {
+      if (state === 'active') startHeartbeat();
+      else stopHeartbeat();
+    };
+    const sub = AppState.addEventListener('change', onAppState);
 
     return () => {
-      subscription.remove();
-      subTheme.remove();
+      stopHeartbeat();
+      sub.remove();
     };
   }, []);
-
-  const isLight = themeFlavor === 'light';
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: isLight ? '#D9A000' : '#FFBE0B', // Or / Turmeric
-        tabBarInactiveTintColor: isLight ? '#705F40' : '#A39171', // Sable-foncé / Sable
+        tabBarActiveTintColor: colors.turmeric,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+          marginBottom: Platform.OS === 'ios' ? 0 : 4,
+        },
         tabBarStyle: {
-          backgroundColor: isLight 
-            ? 'rgba(240, 234, 214, 0.85)' // Translucent light cream
-            : (themeFlavor === 'oled' ? 'rgba(0, 0, 0, 0.85)' : 'rgba(8, 7, 3, 0.8)'),
-          borderTopColor: isLight ? '#E6DCBD' : (themeFlavor === 'oled' ? '#1F1F1F' : '#261F12'),
+          backgroundColor: colors.tabBarBg,
+          borderTopColor: colors.border,
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
-          height: 60,
+          height: tabBarHeight,
+          paddingBottom: Math.max(insets.bottom, 6),
+          paddingTop: 6,
           borderTopWidth: 1,
           elevation: 0,
           shadowOpacity: 0,
-          // Glassmorphism for web preview
-          backdropFilter: 'blur(20px)',
-          webkitBackdropFilter: 'blur(20px)',
-        } as any,
-        headerStyle: {
-          backgroundColor: 'rgba(8, 7, 3, 0.8)', // Translucent Malt noir
-          borderBottomColor: '#261F12', // Malt bordure
-          borderBottomWidth: 1,
-          // Glassmorphism for web preview
-          backdropFilter: 'blur(20px)',
-          webkitBackdropFilter: 'blur(20px)',
-        } as any,
-        headerTitleStyle: {
-          color: '#F5EDD6', // Crème
-          fontFamily: 'SpaceGrotesk700',
-          fontWeight: '700',
         },
-        headerTintColor: '#F5EDD6',
-        headerRight: () => (
-          <View style={{ flexDirection: 'row', gap: 8, paddingRight: 16, alignItems: 'center' }}>
-            <Pressable 
-              onPress={() => router.push('/notifications')}
-              style={{ 
-                width: 36, 
-                height: 36, 
-                borderRadius: 18, 
-                backgroundColor: '#18140B', 
-                borderWidth: 1, 
-                borderColor: '#261F12', 
-                alignItems: 'center', 
-                justifyContent: 'center' 
-              }}
-            >
-              <Bell size={16} color="#A39171" />
-            </Pressable>
-            <Pressable 
-              onPress={() => router.push('/chat')}
-              style={{ 
-                width: 36, 
-                height: 36, 
-                borderRadius: 18, 
-                backgroundColor: '#18140B', 
-                borderWidth: 1, 
-                borderColor: '#261F12', 
-                alignItems: 'center', 
-                justifyContent: 'center' 
-              }}
-            >
-              <Send size={14} color="#A39171" style={{ transform: [{ rotate: '30deg' }, { translateX: -1 }, { translateY: -1 }] }} />
-            </Pressable>
-          </View>
-        ),
-      }}>
+        tabBarItemStyle: {
+          paddingTop: 2,
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Feed',
-          headerTitle: 'PIH Pulse',
+          tabBarAccessibilityLabel: 'Feed',
           tabBarIcon: ({ color }) => <Home size={20} color={color} />,
         }}
       />
@@ -149,7 +118,7 @@ export default function TabLayout() {
         name="projects"
         options={{
           title: 'Projets',
-          headerTitle: 'Projets',
+          tabBarAccessibilityLabel: 'Projets',
           tabBarIcon: ({ color }) => <Layers size={20} color={color} />,
         }}
       />
@@ -157,15 +126,15 @@ export default function TabLayout() {
         name="missions"
         options={{
           title: 'Missions',
-          headerTitle: 'Missions',
+          tabBarAccessibilityLabel: 'Missions',
           tabBarIcon: ({ color }) => <Target size={20} color={color} />,
         }}
       />
       <Tabs.Screen
         name="teams"
         options={{
-          title: 'Équipes',
-          headerTitle: 'Équipes',
+          title: 'Talents',
+          tabBarAccessibilityLabel: 'Talents',
           tabBarIcon: ({ color }) => <Users size={20} color={color} />,
         }}
       />
@@ -173,7 +142,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profil',
-          headerTitle: 'Profil',
+          tabBarAccessibilityLabel: 'Profil',
           tabBarIcon: ({ color }) => <User size={20} color={color} />,
         }}
       />

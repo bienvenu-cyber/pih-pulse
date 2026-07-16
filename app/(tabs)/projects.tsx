@@ -1,271 +1,373 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { Search, Users, MapPin, ExternalLink, Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { ExternalLink, Layers, MapPin, Plus, Search, Users } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import CollapsibleHeader, {
+  useCollapsibleHeaderOffset,
+  useTabListBottomPadding,
+} from '../../components/CollapsibleHeader';
+import PostAuthorHeader from '../../components/PostAuthorHeader';
+import ReactionBar from '../../components/ReactionBar';
+import ReplyCountBadge from '../../components/ReplyCountBadge';
+import EmptyState from '../../components/ui/EmptyState';
+import ListSkeleton from '../../components/ui/ListSkeleton';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
+import { fetchReplyCounts } from '../../lib/replies';
 import { supabase } from '../../lib/supabase';
-import CollapsibleHeader from '../../components/CollapsibleHeader';
-
-// Static fallback data
-const STATIC_PROJECTS = [
-  {
-    id: 'a1111111-1111-1111-1111-111111111111',
-    name: 'WapiFood',
-    creator: 'Koffi Attignon',
-    shortDescription: 'Application de livraison de repas locaux par Mobile Money.',
-    members: '3 membres',
-    location: 'Parakou',
-    status: 'mvp',
-    statusLabel: 'MVP',
-    skills: ['React Native', 'Supabase', 'UI Design'],
-  },
-  {
-    id: 'b2222222-2222-2222-2222-222222222222',
-    name: 'AgriTrack',
-    creator: 'Inès Lawani',
-    shortDescription: 'Plateforme IoT et mobile de suivi des récoltes et des stocks.',
-    members: '1 membre',
-    location: 'Parakou',
-    status: 'idea',
-    statusLabel: 'Idée',
-    skills: ['Python', 'IoT', 'TypeScript'],
-  }
-];
 
 const STATUS_FILTERS = [
   { id: 'all', label: 'Tous' },
   { id: 'mvp', label: 'MVP' },
   { id: 'prototype', label: 'Prototype' },
   { id: 'idea', label: 'Idée' },
+  { id: 'scale', label: 'Lancé' },
 ];
+
+function statusLabel(status: string) {
+  if (status === 'mvp') return 'MVP';
+  if (status === 'prototype') return 'Prototype';
+  if (status === 'scale') return 'Lancé';
+  return 'Idée';
+}
+
+function pickProfile(raw: any) {
+  if (!raw) return null;
+  return Array.isArray(raw) ? raw[0] : raw;
+}
 
 export default function ProjectsScreen() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [headerVisible, setHeaderVisible] = useState(true);
+  const { colors } = useThemeFlavor();
+  const headerOffset = useCollapsibleHeaderOffset();
+  const listBottom = useTabListBottomPadding();
   const lastOffsetY = useRef(0);
   const router = useRouter();
 
   const handleScroll = (event: any) => {
-    const currentOffsetY = event.nativeEvent.contentOffset.y;
-    if (currentOffsetY <= 10) {
+    const y = event.nativeEvent.contentOffset.y;
+    if (y <= 10) {
       setHeaderVisible(true);
       return;
     }
-    if (currentOffsetY > lastOffsetY.current + 15) {
-      setHeaderVisible(false);
-    } else if (currentOffsetY < lastOffsetY.current - 15) {
-      setHeaderVisible(true);
-    }
-    lastOffsetY.current = currentOffsetY;
+    if (y > lastOffsetY.current + 15) setHeaderVisible(false);
+    else if (y < lastOffsetY.current - 15) setHeaderVisible(true);
+    lastOffsetY.current = y;
   };
 
   useEffect(() => {
     fetchProjects();
   }, []);
 
-  const fetchProjects = async () => {
+  const fetchProjects = async (mode: 'init' | 'refresh' = 'init') => {
+    if (mode === 'refresh') setRefreshing(true);
     try {
-      const { data, error } = await supabase
+      const full = await supabase
         .from('projects')
-        .select(`
-          id,
-          name,
-          short_description,
-          status,
-          skills_needed,
-          creator:profiles(full_name),
+        .select(
+          `
+          id, name, short_description, status, skills_needed, location, roles_needed, created_at, creator_id,
+          creator:profiles!creator_id(id, full_name, role),
           project_members(user_id)
-        `)
+        `
+        )
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error(error);
-        setProjects(STATIC_PROJECTS);
-      } else {
-        const formatted = data.map((proj: any) => ({
+      let data: any[] | null = full.data as any[] | null;
+      if (full.error) {
+        // Colonnes location/roles absentes → fallback
+        const basic = await supabase
+          .from('projects')
+          .select(
+            `
+            id, name, short_description, status, skills_needed, created_at, creator_id,
+            creator:profiles!creator_id(id, full_name, role),
+            project_members(user_id)
+          `
+          )
+          .order('created_at', { ascending: false });
+        if (basic.error) {
+          console.error(basic.error);
+          setProjects([]);
+          return;
+        }
+        data = basic.data as any[] | null;
+      }
+
+      const mapped = (data || []).map((proj: any) => {
+        const creator = pickProfile(proj.creator);
+        const memberCount = proj.project_members?.length || 1;
+        return {
           id: proj.id,
           name: proj.name,
-          creator: proj.creator?.full_name || 'Inconnu',
           shortDescription: proj.short_description,
-          members: `${proj.project_members?.length || 1} membre${(proj.project_members?.length || 1) > 1 ? 's' : ''}`,
-          location: 'Parakou',
+          members: `${memberCount} membre${memberCount > 1 ? 's' : ''}`,
+          location: (proj.location || 'Parakou').trim() || 'Parakou',
           status: proj.status,
-          statusLabel: proj.status === 'mvp' ? 'MVP' : proj.status === 'prototype' ? 'Prototype' : 'Idée',
+          statusLabel: statusLabel(proj.status),
           skills: proj.skills_needed || [],
-        }));
-        setProjects(formatted);
-      }
-    } catch (err) {
-      console.error(err);
-      setProjects(STATIC_PROJECTS);
+          createdAt: proj.created_at,
+          replyCount: 0,
+          authorId: creator?.id || proj.creator_id,
+          authorName: creator?.full_name || 'Membre PIH',
+          authorRole: creator?.role,
+        };
+      });
+
+      const counts = await fetchReplyCounts([
+        { refType: 'project', ids: mapped.map((p) => p.id) },
+      ]);
+      mapped.forEach((p) => {
+        p.replyCount = counts.get(`project:${p.id}`) || 0;
+      });
+      setProjects(mapped);
+    } catch {
+      setProjects([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const filteredProjects = projects.filter(project => {
-    const matchesSearch = project.name.toLowerCase().includes(search.toLowerCase()) || 
-                          project.shortDescription.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = activeFilter === 'all' || project.status === activeFilter;
-    return matchesSearch && matchesFilter;
+  const filteredProjects = projects.filter((p) => {
+    const matchSearch =
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.shortDescription?.toLowerCase().includes(search.toLowerCase());
+    const matchFilter = activeFilter === 'all' || p.status === activeFilter;
+    return matchSearch && matchFilter;
   });
 
-  if (loading) {
-    return (
-      <View className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color="#FFBE0B" />
+  const listHeader = (
+    <View className="gap-3 mb-3">
+      <View className="flex-row gap-2">
+        <View
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="flex-row flex-1 items-center h-12 rounded-xl border px-3 gap-2"
+        >
+          <Search size={16} color={colors.textSecondary} />
+          <TextInput
+            placeholder="Rechercher un projet..."
+            placeholderTextColor={colors.textSecondary}
+            value={search}
+            onChangeText={setSearch}
+            style={{ color: colors.text }}
+            className="flex-1 font-inter text-sm h-full"
+            accessibilityLabel="Rechercher un projet"
+          />
+        </View>
+        <Pressable
+          onPress={() => router.push('/project/create')}
+          accessibilityRole="button"
+          accessibilityLabel="Créer un projet"
+          className="w-12 h-12 rounded-xl items-center justify-center active:opacity-90 bg-turmeric"
+        >
+          <Plus size={20} color="#0D0B05" strokeWidth={2.5} />
+        </Pressable>
       </View>
-    );
-  }
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+      >
+        {STATUS_FILTERS.map((f) => {
+          const active = activeFilter === f.id;
+          return (
+            <Pressable
+              key={f.id}
+              onPress={() => setActiveFilter(f.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Filtre ${f.label}`}
+              style={{
+                backgroundColor: active ? colors.turmeric : colors.deep,
+                borderColor: active ? colors.turmeric : colors.border,
+              }}
+              className="px-4 py-2 rounded-full border"
+            >
+              <Text
+                style={{ color: active ? colors.onTurmeric : colors.textSecondary }}
+                className="font-inter text-xs font-semibold"
+              >
+                {f.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
 
   return (
-    <View className="flex-1">
+    <View className="flex-1" style={{ backgroundColor: colors.bg }}>
       <CollapsibleHeader title="Projets" visible={headerVisible} />
 
-      {/* Projects List */}
-      <ScrollView 
-        className="flex-1"
-        contentContainerStyle={{ padding: 20, paddingTop: 76, paddingBottom: 80, gap: 16 }}
-        showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-      >
-        {/* Search Header (Now scrolls naturally!) */}
-        <View className="gap-3 mb-2">
-          <View className="flex-row gap-2">
-            <View className="flex-row flex-1 items-center h-12 rounded-xl border px-3 gap-2 bg-malt-card border-malt">
-              <Search size={16} color="#A39171" />
-              <TextInput
-                placeholder="Rechercher un projet..."
-                placeholderTextColor="#A39171"
-                value={search}
-                onChangeText={setSearch}
-                className="flex-1 text-creme font-inter text-sm h-full"
-              />
-            </View>
-            <Pressable 
-              onPress={() => router.push('/project/create')}
-              className="w-12 h-12 rounded-xl bg-turmeric items-center justify-center active:opacity-90"
-            >
-              <Plus size={20} color="#0D0B05" strokeWidth={2.5} />
-            </Pressable>
-          </View>
-
-          {/* Horizontal Status Filters */}
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
-          >
-            {STATUS_FILTERS.map(filter => {
-              const isActive = activeFilter === filter.id;
-              return (
-                <Pressable
-                  key={filter.id}
-                  onPress={() => setActiveFilter(filter.id)}
-                  className={`px-4 py-2 rounded-full border ${
-                    isActive ? 'bg-turmeric border-turmeric' : 'bg-malt-card border-malt'
-                  }`}
-                >
-                  <Text 
-                    className={`font-inter text-xs font-semibold ${
-                      isActive ? 'text-malt-deep' : 'text-sable'
-                    }`}
-                  >
-                    {filter.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+      {loading ? (
+        <View style={{ padding: 16, paddingTop: headerOffset + 12 }}>
+          {listHeader}
+          <ListSkeleton count={4} variant="card" />
         </View>
+      ) : (
+        <FlatList
+          data={filteredProjects}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{
+            padding: 16,
+            paddingTop: headerOffset + 12,
+            paddingBottom: listBottom,
+            gap: 12,
+            flexGrow: 1,
+          }}
+          showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchProjects('refresh')}
+              tintColor={colors.turmeric}
+              colors={[colors.turmeric]}
+            />
+          }
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={
+            <EmptyState
+              icon={Layers}
+              title={
+                search || activeFilter !== 'all'
+                  ? 'Aucun résultat'
+                  : 'Aucun projet pour l’instant'
+              }
+              description={
+                search || activeFilter !== 'all'
+                  ? 'Essaie un autre filtre ou une autre recherche.'
+                  : 'Lance le premier projet du hub — l’équipe te rejoindra.'
+              }
+              actionLabel={
+                search || activeFilter !== 'all' ? undefined : 'Créer un projet'
+              }
+              onAction={
+                search || activeFilter !== 'all'
+                  ? undefined
+                  : () => router.push('/project/create')
+              }
+            />
+          }
+          renderItem={({ item: project }) => {
+            const showIdea =
+              project.status === 'idea' || project.status === 'prototype';
+            const isMvp = project.status === 'mvp' || project.status === 'scale';
 
-        {filteredProjects.length > 0 ? (
-          filteredProjects.map(project => (
-            <Pressable 
-              key={project.id}
-              onPress={() => router.push(`/project/${project.id}`)}
-              style={{ backdropFilter: 'blur(12px)', webkitBackdropFilter: 'blur(12px)' } as any}
-              className="bg-malt-card/80 border border-malt/60 rounded-3xl p-5 gap-3 active:opacity-95"
-            >
-              {/* Header card info */}
-              <View className="flex-row justify-between items-center">
-                <Text className="text-creme font-space text-lg font-bold">
-                  {project.name}
-                </Text>
-                <View className="bg-sable/10 px-2.5 py-1 rounded-lg border border-malt">
-                  <Text className="text-sable font-inter text-[10px] font-bold uppercase tracking-wider">
-                    {project.statusLabel}
+            return (
+              <Pressable
+                onPress={() => router.push(`/project/${project.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Projet ${project.name}`}
+                style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                className="rounded-2xl px-4 pt-3.5 pb-2 gap-3 active:opacity-95 border"
+              >
+                <PostAuthorHeader
+                  authorName={project.authorName}
+                  authorId={project.authorId}
+                  subtitle={`${formatRoleLabel(project.authorRole)} · a publié un projet`}
+                  timeLabel={formatRelativeTime(project.createdAt)}
+                  typeLabel={project.statusLabel}
+                  typeColor={isMvp ? colors.kaki : colors.textSecondary}
+                />
+
+                <View className="gap-1.5">
+                  <Text
+                    style={{ color: colors.text }}
+                    className="font-space text-[16px] font-bold leading-6"
+                  >
+                    {project.name}
+                  </Text>
+                  <Text
+                    style={{ color: colors.textSecondary }}
+                    className="font-inter text-[13px] leading-5"
+                    numberOfLines={3}
+                  >
+                    {project.shortDescription}
                   </Text>
                 </View>
-              </View>
 
-              {/* Creator details */}
-              <Text className="text-sable font-inter text-xs">
-                Créé par {project.creator}
-              </Text>
+                {project.skills.length > 0 && (
+                  <View className="flex-row flex-wrap gap-1.5">
+                    {project.skills.slice(0, 4).map((skill: string) => (
+                      <View
+                        key={skill}
+                        style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                        className="px-2 py-1 rounded-md border"
+                      >
+                        <Text
+                          style={{ color: colors.textSecondary }}
+                          className="font-inter text-[10px] font-medium"
+                        >
+                          {skill}
+                        </Text>
+                      </View>
+                    ))}
+                    {project.skills.length > 4 && (
+                      <Text
+                        style={{ color: colors.textSecondary }}
+                        className="font-inter text-[10px] self-center"
+                      >
+                        +{project.skills.length - 4}
+                      </Text>
+                    )}
+                  </View>
+                )}
 
-              {/* Description */}
-              <Text className="text-creme font-inter text-sm leading-5">
-                {project.shortDescription}
-              </Text>
-
-              {/* Tech stack badges */}
-              <View className="flex-row flex-wrap gap-1.5 mt-1">
-                {project.skills.map((skill: string) => (
-                  <View 
-                    key={skill} 
-                    className="bg-malt-deep px-2.5 py-1 rounded-lg border border-malt"
-                  >
-                    <Text className="text-sable font-inter text-[10px] font-medium">
-                      {skill}
+                <View className="flex-row gap-4 items-center">
+                  <View className="flex-row items-center gap-1">
+                    <Users size={12} color={colors.textSecondary} />
+                    <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+                      {project.members}
                     </Text>
                   </View>
-                ))}
-              </View>
-
-              {/* Divider */}
-              <View className="h-[1px] bg-malt/50 my-1" />
-
-              {/* Footer Meta & Action */}
-              <View className="flex-row justify-between items-center">
-                <View className="flex-row gap-4">
                   <View className="flex-row items-center gap-1">
-                    <Users size={12} color="#A39171" />
-                    <Text className="text-sable font-inter text-xs">{project.members}</Text>
+                    <MapPin size={12} color={colors.textSecondary} />
+                    <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+                      {project.location}
+                    </Text>
                   </View>
-                  <View className="flex-row items-center gap-1">
-                    <MapPin size={12} color="#A39171" />
-                    <Text className="text-sable font-inter text-xs">{project.location}</Text>
+                  <ReplyCountBadge count={project.replyCount} />
+                  <View className="flex-1" />
+                  <View className="flex-row items-center gap-0.5">
+                    <Text
+                      style={{ color: colors.textSecondary }}
+                      className="font-inter text-[11px] font-bold"
+                    >
+                      Voir
+                    </Text>
+                    <ExternalLink size={12} color={colors.textSecondary} />
                   </View>
                 </View>
 
-                {/* Primary Action is Yellow ONLY if MVP/Active recruitment, otherwise standard */}
-                <View 
-                  className={`flex-row items-center gap-1 px-3 py-1.5 rounded-full border ${
-                    project.status === 'mvp' ? 'bg-turmeric border-turmeric' : 'bg-malt-deep border-malt'
-                  }`}
+                <View
+                  style={{ borderTopWidth: 1, borderTopColor: colors.border + '99' }}
+                  className="pt-1"
                 >
-                  <Text 
-                    className={`font-inter text-[10px] font-bold ${
-                      project.status === 'mvp' ? 'text-malt-deep' : 'text-creme'
-                    }`}
-                  >
-                    Détails
-                  </Text>
-                  <ExternalLink size={10} color={project.status === 'mvp' ? '#0D0B05' : '#F5EDD6'} />
+                  <ReactionBar refId={project.id} refType="project" showIdea={showIdea} />
                 </View>
-              </View>
-            </Pressable>
-          ))
-        ) : (
-          <View className="items-center py-12">
-            <Text className="text-sable font-inter text-sm">Aucun projet trouvé.</Text>
-          </View>
-        )}
-      </ScrollView>
+              </Pressable>
+            );
+          }}
+        />
+      )}
     </View>
   );
 }

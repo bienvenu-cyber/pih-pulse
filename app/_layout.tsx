@@ -1,33 +1,33 @@
-import '../global.css';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { DeviceEventEmitter, Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
 import 'react-native-reanimated';
+import '../global.css';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { 
-  SpaceGrotesk_500Medium, 
-  SpaceGrotesk_700Bold 
-} from '@expo-google-fonts/space-grotesk';
-import { 
-  Inter_400Regular, 
-  Inter_500Medium, 
-  Inter_600SemiBold, 
-  Inter_700Bold 
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold
 } from '@expo-google-fonts/inter';
+import {
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_700Bold
+} from '@expo-google-fonts/space-grotesk';
+import { supabase } from '../lib/supabase';
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+  ErrorBoundary
 } from 'expo-router';
 
 export const stability = 'stable';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
@@ -65,6 +65,18 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const [themeFlavor, setThemeFlavor] = useState<'malt' | 'oled' | 'light'>('malt');
+  const router = useRouter();
+
+  useEffect(() => {
+    // Listener de session — redirige vers /login si la session expire ou est révoquée
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+        router.replace('/login');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     // Load saved theme flavor safely (web compatibility)
@@ -125,16 +137,26 @@ function RootLayoutNav() {
         <Stack.Screen name="register" options={{ headerShown: false }} />
         <Stack.Screen name="profile-setup" options={{ headerShown: false }} />
         <Stack.Screen name="verify-otp" options={{ headerShown: false }} />
+        <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+        <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="project/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="project/create" options={{ headerShown: false }} />
         <Stack.Screen name="mission/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="mission/create" options={{ headerShown: false }} />
+        <Stack.Screen name="event/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="post/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="post/create" options={{ headerShown: false }} />
+        <Stack.Screen name="post/edit" options={{ headerShown: false }} />
         <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/edit" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/security" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/portfolio" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/impact" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/settings" options={{ headerShown: false }} />
         <Stack.Screen name="chat/index" options={{ headerShown: false }} />
         <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
   );

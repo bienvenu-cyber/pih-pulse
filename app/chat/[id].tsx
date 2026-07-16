@@ -1,12 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Send, Check, CheckCheck, Phone, Video } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, Check, CheckCheck, CheckCircle, Send } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
-import { sendPushNotification } from '../../lib/notifications';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 
 export default function ChatRoomScreen() {
+  const { colors } = useThemeFlavor();
   const { id } = useLocalSearchParams(); // ID of the user we are chatting with
   const router = useRouter();
 
@@ -23,17 +24,11 @@ export default function ChatRoomScreen() {
     setModalVisible(true);
   };
   
-  const handleCallPress = () => {
-    showModal(
-      "Bientôt disponible",
-      "Les appels audio et vidéo seront bientôt disponibles sur PIH Pulse !",
-      "info"
-    );
-  };
   const [themProfile, setThemProfile] = useState<any>(null);
   const [meId, setMeId] = useState<string | null>(null);
   const [myName, setMyName] = useState('Un collaborateur');
   const [projectTokens, setProjectTokens] = useState<string[]>([]);
+  const [projectMemberIds, setProjectMemberIds] = useState<string[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -87,6 +82,7 @@ export default function ChatRoomScreen() {
               creator: 'Inconnu'
             });
           } else {
+            const creator = Array.isArray(proj.creator) ? proj.creator[0] : proj.creator;
             const initials = proj.name
               .split(' ')
               .map((n: string) => n[0])
@@ -101,7 +97,7 @@ export default function ChatRoomScreen() {
               initials: initials,
               description: proj.description || 'Pas de description pour ce projet.',
               status: proj.status === 'mvp' ? 'MVP' : proj.status === 'prototype' ? 'Prototype' : 'Idée',
-              creator: proj.creator?.full_name || 'Inconnu'
+              creator: creator?.full_name || 'Inconnu'
             });
           }
 
@@ -114,16 +110,22 @@ export default function ChatRoomScreen() {
           if (!memError && members) {
             const names: Record<string, string> = {};
             const tokens: string[] = [];
+            const otherIds: string[] = [];
             members.forEach((m: any) => {
-              if (m.profiles) {
-                names[m.user_id] = m.profiles.full_name || 'Collaborateur';
-                if (m.user_id !== user.id && m.profiles.expo_push_token) {
-                  tokens.push(m.profiles.expo_push_token);
+              const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+              if (m.user_id && m.user_id !== user.id) {
+                otherIds.push(m.user_id);
+              }
+              if (profile) {
+                names[m.user_id] = profile.full_name || 'Collaborateur';
+                if (m.user_id !== user.id && profile.expo_push_token) {
+                  tokens.push(profile.expo_push_token);
                 }
               }
             });
             setMemberNames(names);
             setProjectTokens(tokens);
+            setProjectMemberIds(otherIds);
           }
 
           // 3. Fetch project message history
@@ -136,16 +138,27 @@ export default function ChatRoomScreen() {
           if (msgsError) {
             console.error('Error fetching project messages:', msgsError);
           } else if (msgs) {
-            const formatted = msgs.map((m: any) => ({
-              id: m.id,
-              text: m.text,
-              is_read: m.is_read,
-              sender: m.sender_id === user.id ? 'me' : 'them',
-              senderName: m.sender?.full_name || 'Collaborateur',
-              time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }));
+            const formatted = msgs.map((m: any) => {
+              const sender = Array.isArray(m.sender) ? m.sender[0] : m.sender;
+              return {
+                id: m.id,
+                text: m.text,
+                is_read: m.is_read,
+                sender: m.sender_id === user.id ? 'me' : 'them',
+                senderName: sender?.full_name || 'Collaborateur',
+                time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              };
+            });
             setMessages(formatted);
           }
+
+          // Marquer les messages projet des autres comme lus (compteur inbox)
+          await supabase
+            .from('messages')
+            .update({ is_read: true })
+            .eq('project_id', projectId)
+            .neq('sender_id', user.id)
+            .eq('is_read', false);
 
           // 4. Set up project realtime listener
           const channel = supabase
@@ -164,6 +177,12 @@ export default function ChatRoomScreen() {
                   
                   // Only process incoming messages
                   if (newMsg.sender_id !== user.id) {
+                    // Marquer lu immédiatement (chat ouvert)
+                    void supabase
+                      .from('messages')
+                      .update({ is_read: true })
+                      .eq('id', newMsg.id);
+
                     // Resolve sender name (from cache or quick query)
                     let sName = memberNames[newMsg.sender_id];
                     if (!sName) {
@@ -403,25 +422,51 @@ export default function ChatRoomScreen() {
           )
         );
 
-        // Trigger push notifications
-        if (isProjectChat) {
-          projectTokens.forEach((token) => {
-            sendPushNotification(
-              token,
-              `[Équipe] ${themProfile.name}`,
-              `${myName}: ${textToSend}`,
-              { route: `/chat/${id}` }
-            );
-          });
-        } else {
-          if (themProfile.expo_push_token) {
-            sendPushNotification(
-              themProfile.expo_push_token,
-              myName,
-              textToSend,
-              { route: `/chat/${meId}` }
-            );
+        // Notif in-app + push (deep link vers le fil)
+        const { notifyUser } = await import('../../lib/activity');
+        if (isProjectChat && projectId) {
+          // Inbox in-app pour chaque membre + push (opt-in via notifyUser)
+          await Promise.all(
+            projectMemberIds.map((uid) =>
+              notifyUser({
+                userId: uid,
+                actorId: meId,
+                type: 'message_received',
+                title: `[Équipe] ${themProfile?.name || 'Projet'}`,
+                body: `${myName}: ${textToSend.slice(0, 120)}`,
+                route: `/chat/project-${projectId}`,
+                refType: 'project',
+                refId: projectId,
+                push: true,
+                throttle: false,
+              })
+            )
+          );
+          // Fallback push tokens déjà chargés (si notify n’a pas de token)
+          if (projectTokens.length && projectMemberIds.length === 0) {
+            const { sendPushNotification } = await import('../../lib/notifications');
+            projectTokens.forEach((token) => {
+              void sendPushNotification(
+                token,
+                `[Équipe] ${themProfile?.name || 'Projet'}`,
+                `${myName}: ${textToSend}`,
+                { route: `/chat/project-${projectId}` }
+              );
+            });
           }
+        } else {
+          await notifyUser({
+            userId: String(id),
+            actorId: meId,
+            type: 'message_received',
+            title: myName || 'Nouveau message',
+            body: textToSend.slice(0, 140),
+            route: `/chat/${meId}`,
+            refType: 'profile',
+            refId: meId || undefined,
+            push: true,
+            throttle: false,
+          });
         }
       }
     } catch (err) {
@@ -431,79 +476,65 @@ export default function ChatRoomScreen() {
 
   if (loading || !themProfile) {
     return (
-      <View className="flex-1 bg-malt-deep items-center justify-center">
-        <ActivityIndicator size="large" color="#FFBE0B" />
+      <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color={colors.turmeric} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-malt-deep">
+    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
       {/* Header */}
-      <View className="h-16 flex-row items-center justify-between px-5 bg-malt-nav border-b border-malt">
+      <View style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }} className="h-16 flex-row items-center justify-between px-5 border-b">
         <View className="flex-row items-center gap-3">
-          <Pressable onPress={handleBack} className="w-9 h-9 rounded-full bg-malt-card border border-malt items-center justify-center">
-            <ArrowLeft size={18} color="#F5EDD6" />
+          <Pressable onPress={handleBack} style={{ backgroundColor: colors.card, borderColor: colors.border }} className="w-9 h-9 rounded-full border items-center justify-center">
+            <ArrowLeft size={18} color={colors.text} />
           </Pressable>
           <View className="flex-row items-center gap-2">
-            <View className="w-10 h-10 rounded-full bg-malt-card border border-malt items-center justify-center">
-              <Text className="text-creme font-space text-xs font-bold">{themProfile.initials}</Text>
+            <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="w-10 h-10 rounded-full border items-center justify-center">
+              <Text style={{ color: colors.text }} className="font-space text-xs font-bold">{themProfile.initials}</Text>
             </View>
             <View>
-              <Text className="text-creme font-space text-sm font-bold">{themProfile.name}</Text>
-              <Text className="text-sable font-inter text-[10px] uppercase font-semibold">{themProfile.role}</Text>
+              <Text style={{ color: colors.text }} className="font-space text-sm font-bold">{themProfile.name}</Text>
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] uppercase font-semibold">{themProfile.role}</Text>
             </View>
           </View>
         </View>
 
-        {/* Call placeholders */}
-        <View className="flex-row items-center gap-3">
-          <Pressable 
-            onPress={handleCallPress} 
-            className="w-9 h-9 rounded-full bg-malt-card border border-malt items-center justify-center active:opacity-85"
-          >
-            <Phone size={16} color="#A39171" />
-          </Pressable>
-          <Pressable 
-            onPress={handleCallPress} 
-            className="w-9 h-9 rounded-full bg-malt-card border border-malt items-center justify-center active:opacity-85"
-          >
-            <Video size={16} color="#A39171" />
-          </Pressable>
-        </View>
       </View>
 
       {/* Pinned Project Briefing (Floating Glassmorphism Card) */}
       {isProjectChat && themProfile && (
         <View className="px-4 pt-3 pb-1 z-10">
           <View 
-            style={{ 
-              backdropFilter: 'blur(20px)', 
-              webkitBackdropFilter: 'blur(20px)' 
+            style={{
+              backdropFilter: 'blur(20px)',
+              backgroundColor: colors.card,
+              borderColor: colors.border,
             } as any}
-            className="bg-malt-card/75 border border-turmeric/15 p-4 rounded-3xl gap-2"
+            className="border p-4 rounded-3xl gap-2"
           >
             {infoExpanded ? (
               <View className="gap-2.5 pb-1">
                 <View className="flex-row justify-between items-center">
                   <View className="flex-row items-center gap-1.5">
                     <Text className="text-turmeric text-[10px] font-bold uppercase tracking-wider">📌 Brief de l'équipe</Text>
-                    <View className="bg-malt-deep/60 px-1.5 py-0.5 rounded border border-malt/50">
-                      <Text className="text-sable text-[8px] font-bold uppercase">{themProfile.status}</Text>
+                    <View style={{ backgroundColor: colors.deep, borderColor: colors.border }} className="px-1.5 py-0.5 rounded border">
+                      <Text style={{ color: colors.textSecondary }} className="text-[8px] font-bold uppercase">{themProfile.status}</Text>
                     </View>
                   </View>
                   <Pressable 
                     onPress={() => setInfoExpanded(false)} 
-                    className="px-2.5 py-1 rounded-xl bg-malt-deep/60 border border-malt/50 active:opacity-85"
+                    style={{ backgroundColor: colors.deep, borderColor: colors.border }} className="px-2.5 py-1 rounded-xl border active:opacity-85"
                   >
-                    <Text className="text-sable font-inter text-[9px] font-semibold">Masquer</Text>
+                    <Text style={{ color: colors.textSecondary }} className="font-inter text-[9px] font-semibold">Masquer</Text>
                   </Pressable>
                 </View>
-                <Text className="text-creme font-inter text-xs leading-5">
+                <Text style={{ color: colors.text }} className="font-inter text-xs leading-5">
                   {themProfile.description}
                 </Text>
                 <View className="flex-row justify-between items-center mt-1 pt-2 border-t border-malt/30">
-                  <Text className="text-sable font-inter text-[9px]">Créé par <Text className="text-creme font-semibold">{themProfile.creator}</Text></Text>
+                  <Text style={{ color: colors.textSecondary }} className="font-inter text-[9px]">Créé par <Text style={{ color: colors.text }} className="font-semibold">{themProfile.creator}</Text></Text>
                   <Pressable 
                     onPress={() => router.push(`/project/${projectId}`)}
                     className="bg-turmeric/10 border border-turmeric/35 px-3 py-1 rounded-lg active:opacity-85"
@@ -517,8 +548,8 @@ export default function ChatRoomScreen() {
                 onPress={() => setInfoExpanded(true)}
                 className="flex-row justify-between items-center"
               >
-                <Text className="text-sable font-inter text-xs flex-1 pr-2" numberOfLines={1}>
-                  📌 <Text className="text-creme font-semibold">{themProfile.name}</Text> : {themProfile.description}
+                <Text style={{ color: colors.textSecondary }} className="font-inter text-xs flex-1 pr-2" numberOfLines={1}>
+                  📌 <Text style={{ color: colors.text }} className="font-semibold">{themProfile.name}</Text> : {themProfile.description}
                 </Text>
                 <Text className="text-turmeric font-inter-bold text-xs font-bold">[Voir]</Text>
               </Pressable>
@@ -544,14 +575,14 @@ export default function ChatRoomScreen() {
           {/* Introduction Card for 1-to-1 chats */}
           {!isProjectChat && (
             <View className="items-center py-6 mb-4 border-b border-malt/30 gap-3">
-              <View className="w-14 h-14 rounded-full bg-malt-card border border-malt items-center justify-center">
-                <Text className="text-creme font-space text-lg font-bold">{themProfile.initials}</Text>
+              <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="w-14 h-14 rounded-full border items-center justify-center">
+                <Text style={{ color: colors.text }} className="font-space text-lg font-bold">{themProfile.initials}</Text>
               </View>
               <View className="items-center gap-1">
-                <Text className="text-creme font-space text-sm font-bold text-center">{themProfile.name}</Text>
-                <Text className="text-sable font-inter text-[10px] text-center uppercase tracking-wider">{themProfile.role}</Text>
+                <Text style={{ color: colors.text }} className="font-space text-sm font-bold text-center">{themProfile.name}</Text>
+                <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] text-center uppercase tracking-wider">{themProfile.role}</Text>
               </View>
-              <Text className="text-sable font-inter text-[11px] text-center max-w-[85%] leading-4 mt-1">
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px] text-center max-w-[85%] leading-4 mt-1">
                 Début de votre conversation avec {themProfile.name}. Discutez de vos compétences et collaborez sur PIH Pulse.
               </Text>
             </View>
@@ -566,7 +597,7 @@ export default function ChatRoomScreen() {
               >
                 {/* Sender Name for group chats */}
                 {isProjectChat && !isMe && msg.senderName && (
-                  <Text className="text-sable font-inter text-[10px] font-bold mb-0.5 ml-1">
+                  <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] font-bold mb-0.5 ml-1">
                     {msg.senderName}
                   </Text>
                 )}
@@ -574,28 +605,37 @@ export default function ChatRoomScreen() {
                 {/* Bubble */}
                 <View 
                   className={`px-4 py-3 rounded-2xl border ${
-                    isMe 
-                      ? 'bg-turmeric/10 border-turmeric/20 rounded-tr-none' 
-                      : 'bg-malt-card border-malt rounded-tl-none'
+                    isMe ? 'rounded-tr-none' : 'rounded-tl-none'
                   }`}
+                  style={
+                    isMe
+                      ? {
+                          backgroundColor: 'rgba(255, 190, 11, 0.12)',
+                          borderColor: 'rgba(255, 190, 11, 0.28)',
+                        }
+                      : {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                        }
+                  }
                 >
-                  <Text className="text-creme font-inter text-sm leading-5">
+                  <Text style={{ color: colors.text }} className="font-inter text-sm leading-5">
                     {msg.text}
                   </Text>
                 </View>
                 
                 {/* Time & Read Status */}
                 <View className="flex-row items-center gap-1 px-1">
-                  <Text className="text-sable font-inter text-[9px]">
+                  <Text style={{ color: colors.textSecondary }} className="font-inter text-[9px]">
                     {msg.time}
                   </Text>
                   {isMe && (
                     msg.id.startsWith('temp-') ? (
-                      <ActivityIndicator size={6} color="#A39171" />
+                      <ActivityIndicator size={6} color={colors.textSecondary} />
                     ) : msg.is_read ? (
-                      <CheckCheck size={11} color="#FFBE0B" />
+                      <CheckCheck size={11} color={colors.turmeric} />
                     ) : (
-                      <Check size={11} color="#A39171" />
+                      <Check size={11} color={colors.textSecondary} />
                     )
                   )}
                 </View>
@@ -605,15 +645,15 @@ export default function ChatRoomScreen() {
         </ScrollView>
 
         {/* Input Bar */}
-        <View className="flex-row items-center p-4 bg-malt-nav border-t border-malt gap-3">
-          <View className="flex-1 flex-row items-center border border-malt bg-malt-card rounded-2xl px-4 h-12">
+        <View style={{ backgroundColor: colors.nav, borderTopColor: colors.border }} className="flex-row items-center p-4 border-t gap-3">
+          <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="flex-1 flex-row items-center border rounded-2xl px-4 h-12">
             <TextInput
               placeholder="Écrire votre message..."
-              placeholderTextColor="#A39171"
+              placeholderTextColor={colors.textSecondary}
               value={inputMessage}
               onChangeText={setInputMessage}
               onSubmitEditing={handleSendMessage}
-              className="flex-1 text-creme font-inter text-sm h-full"
+              style={{ color: colors.text }} className="flex-1 font-inter text-sm h-full"
             />
           </View>
 
@@ -631,20 +671,20 @@ export default function ChatRoomScreen() {
       {/* Custom Alert Modal */}
       {modalVisible && (
         <View className="absolute inset-0 bg-black/70 items-center justify-center z-50 px-6">
-          <View className="bg-malt-card border border-malt p-6 rounded-3xl w-full max-w-sm gap-4 items-center">
+          <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="border p-6 rounded-3xl w-full max-w-sm gap-4 items-center">
             {modalType === 'success' ? (
               <View className="w-12 h-12 rounded-full bg-kaki/15 border border-kaki/30 items-center justify-center">
                 <CheckCircle size={24} color="#7CB87A" />
               </View>
             ) : (
               <View className="w-12 h-12 rounded-full bg-turmeric/10 border border-turmeric/30 items-center justify-center">
-                <AlertTriangle size={24} color="#FFBE0B" />
+                <AlertTriangle size={24} color={colors.turmeric} />
               </View>
             )}
             
             <View className="items-center gap-1.5 w-full">
-              <Text className="text-creme font-space text-lg font-bold text-center">{modalTitle}</Text>
-              <Text className="text-sable font-inter text-xs text-center leading-5">{modalMessage}</Text>
+              <Text style={{ color: colors.text }} className="font-space text-lg font-bold text-center">{modalTitle}</Text>
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-xs text-center leading-5">{modalMessage}</Text>
             </View>
             
             <Pressable 

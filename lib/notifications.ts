@@ -8,6 +8,8 @@ try {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
     }),
@@ -65,7 +67,7 @@ export async function savePushToken(userId: string, token: string): Promise<bool
   try {
     const { error } = await supabase
       .from('profiles')
-      .update({ expo_push_token: token })
+      .update({ expo_push_token: token, push_enabled: true })
       .eq('id', userId);
 
     if (error) {
@@ -79,35 +81,157 @@ export async function savePushToken(userId: string, token: string): Promise<bool
   }
 }
 
+/** Préférence push seule (même sans token — web / simulateur) */
+export async function setPushPreference(
+  userId: string,
+  enabled: boolean
+): Promise<boolean> {
+  try {
+    const payload: Record<string, unknown> = { push_enabled: enabled };
+    if (!enabled) payload.expo_push_token = null;
+    const { error } = await supabase.from('profiles').update(payload).eq('id', userId);
+    if (error) {
+      console.error('setPushPreference:', error.message);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Active les notifs : flag ON + token si possible.
+ * Sur web/simu : flag reste ON même sans token (in-app notifs).
+ */
+export async function enablePushNotifications(
+  userId: string
+): Promise<{ ok: boolean; token: string | null; reason?: string }> {
+  const prefOk = await setPushPreference(userId, true);
+  if (!prefOk) {
+    return { ok: false, token: null, reason: 'db' };
+  }
+
+  if (Platform.OS === 'web') {
+    return { ok: true, token: null, reason: 'web' };
+  }
+
+  const token = await registerForPushNotificationsAsync();
+  if (token) {
+    await savePushToken(userId, token);
+    return { ok: true, token };
+  }
+
+  // Préférence activée, token indisponible (simu / permission)
+  return { ok: true, token: null, reason: 'no_token' };
+}
+
+/** Désactive les push (flag + token) */
+export async function disablePushNotifications(userId: string): Promise<boolean> {
+  return setPushPreference(userId, false);
+}
+
+export async function getPushPermissionStatus(): Promise<
+  'granted' | 'denied' | 'undetermined' | 'unavailable'
+> {
+  if (Platform.OS === 'web') return 'unavailable';
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status === 'granted') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'undetermined';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+export type ExpoPushMessage = {
+  to: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  sound?: 'default' | null;
+  badge?: number;
+};
+
+/** 1 notif (compat) */
 export async function sendPushNotification(
   token: string,
   title: string,
   body: string,
-  data?: any
+  data?: Record<string, unknown>
 ) {
+  return sendPushBatch([
+    { to: token, title, body, data, sound: 'default' },
+  ]);
+}
+
+/**
+ * Batch Expo Push (max 100 / requête — scale 100k via chunks).
+ * https://docs.expo.dev/push-notifications/sending-notifications/
+ */
+export async function sendPushBatch(
+  messages: ExpoPushMessage[]
+): Promise<unknown> {
+  const valid = messages.filter((m) => m.to && typeof m.to === 'string');
+  if (!valid.length) return null;
+
   try {
-    const message = {
-      to: token,
-      sound: 'default',
+    const chunks: ExpoPushMessage[][] = [];
+    for (let i = 0; i < valid.length; i += 100) {
+      chunks.push(valid.slice(i, i + 100));
+    }
+
+    const results = [];
+    for (const chunk of chunks) {
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(chunk),
+      });
+      results.push(await response.json());
+    }
+    return results;
+  } catch (error) {
+    console.error('Error sending push batch:', error);
+    return null;
+  }
+}
+
+/**
+ * Push vers N users (fetch tokens + batch).
+ * Respecte push_enabled.
+ */
+export async function sendPushToUserIds(
+  userIds: string[],
+  title: string,
+  body: string,
+  data?: Record<string, unknown>
+): Promise<void> {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+  if (!ids.length) return;
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, expo_push_token, push_enabled')
+    .in('id', ids);
+
+  const messages: ExpoPushMessage[] = [];
+  (profiles || []).forEach((p: any) => {
+    if (p.push_enabled === false) return;
+    if (!p.expo_push_token) return;
+    messages.push({
+      to: p.expo_push_token,
       title,
       body,
       data,
-    };
-
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Accept-encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(message),
+      sound: 'default',
     });
+  });
 
-    const resData = await response.json();
-    return resData;
-  } catch (error) {
-    console.error('Error sending push notification:', error);
-    return null;
-  }
+  if (messages.length) await sendPushBatch(messages);
 }

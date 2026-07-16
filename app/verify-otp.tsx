@@ -1,142 +1,148 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowRight, ShieldCheck } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, Text } from 'react-native';
+import {
+  FormAlert,
+  FormField,
+  FormScreen,
+  FormSection,
+  PrimaryButton,
+} from '../components/ui/form/FormPrimitives';
+import { useThemeFlavor } from '../hooks/useThemeFlavor';
 import { supabase } from '../lib/supabase';
 
+const RESEND_COOLDOWN_SEC = 60;
+
 export default function VerifyOtpScreen() {
-  const { email } = useLocalSearchParams();
+  const { email: emailParam } = useLocalSearchParams();
+  const email = String(emailParam || '').trim();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
-  
+  const [infoMsg, setInfoMsg] = useState('');
   const router = useRouter();
+  const { colors } = useThemeFlavor();
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
 
   const handleVerify = async () => {
+    if (!email) {
+      setErrorMsg('E-mail manquant. Reprends l’inscription.');
+      return;
+    }
     if (code.length < 6) {
       setErrorMsg('Veuillez entrer le code de validation reçu.');
       return;
     }
-
     setLoading(true);
     setErrorMsg('');
-
+    setInfoMsg('');
     try {
-      // Vérification du code OTP auprès de Supabase Auth
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: (email as string).trim(),
+      const { error } = await supabase.auth.verifyOtp({
+        email,
         token: code.trim(),
-        type: 'signup' // Indique qu'il s'agit d'une confirmation d'inscription
+        type: 'signup',
       });
-
       if (error) {
-        setErrorMsg('Code incorrect ou expiré. Veuillez vérifier votre boîte mail.');
+        setErrorMsg('Code incorrect ou expiré. Vérifie ta boîte mail ou renvoie un code.');
         setLoading(false);
         return;
       }
-
-      // Code validé avec succès ! L'utilisateur est connecté.
-      // Redirection vers l'étape de configuration du profil
       router.replace('/profile-setup');
-    } catch (err: any) {
+    } catch {
       setErrorMsg('Une erreur inattendue est survenue.');
       setLoading(false);
     }
   };
 
-  const handleBack = () => {
-    router.back();
+  const handleResend = async () => {
+    if (!email || resending || cooldown > 0) return;
+    setResending(true);
+    setErrorMsg('');
+    setInfoMsg('');
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+      });
+      if (error) {
+        setErrorMsg(error.message || 'Impossible de renvoyer le code.');
+      } else {
+        setInfoMsg(`Nouveau code envoyé à ${email}`);
+        setCooldown(RESEND_COOLDOWN_SEC);
+        setCode('');
+      }
+    } catch {
+      setErrorMsg('Impossible de renvoyer le code.');
+    } finally {
+      setResending(false);
+    }
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-malt-deep justify-center">
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-        className="flex-1"
+    <FormScreen
+      title="Vérification"
+      subtitle={email || 'Code e-mail'}
+      onBack={() => router.back()}
+      footer={
+        <PrimaryButton
+          label="Valider le compte"
+          onPress={handleVerify}
+          loading={loading}
+          icon={ArrowRight}
+          disabled={!email}
+        />
+      }
+    >
+      <FormSection
+        icon={ShieldCheck}
+        title="Code de validation"
+        subtitle="Saisis le code reçu par e-mail pour activer ton compte."
       >
-        <ScrollView 
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} 
-          className="px-6 py-8"
-          showsVerticalScrollIndicator={false}
+        {errorMsg ? <FormAlert message={errorMsg} /> : null}
+        {infoMsg ? <FormAlert message={infoMsg} tone="success" /> : null}
+        {!email ? (
+          <FormAlert message="E-mail manquant. Retourne à l’inscription." />
+        ) : null}
+        <FormField
+          label="Code OTP"
+          required
+          placeholder="00000000"
+          value={code}
+          onChangeText={setCode}
+          keyboardType="number-pad"
+          maxLength={8}
+          autoFocus
+          editable={!loading && !!email}
+          hint="6 à 8 chiffres"
+        />
+        <Pressable
+          onPress={handleResend}
+          disabled={!email || resending || cooldown > 0 || loading}
+          className="items-center py-2 active:opacity-80"
         >
-          <View className="w-full max-w-[400px] self-center gap-8 py-6">
-            
-            {/* Header */}
-            <View className="items-center gap-1.5 mb-2">
-              <View className="w-12 h-12 rounded-2xl bg-malt-card border border-malt items-center justify-center mb-3">
-                <ShieldCheck size={24} color="#FFBE0B" />
-              </View>
-              <Text className="text-creme font-space text-2xl font-bold tracking-tight">
-                Vérification
-              </Text>
-              <Text className="text-sable font-inter text-xs text-center px-4">
-                Saisissez le code de validation reçu par e-mail à {email}
-              </Text>
-            </View>
-
-            {/* Error Message */}
-            {errorMsg ? (
-              <View className="bg-corail/10 border border-corail/20 p-3.5 rounded-xl">
-                <Text className="text-corail font-inter text-xs font-medium text-center">
-                  {errorMsg}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* OTP Input Field */}
-            <View className="gap-2">
-              <Text className="text-sable font-inter text-[10px] font-bold uppercase tracking-wider ml-1 text-center">
-                Code de validation
-              </Text>
-              <TextInput
-                placeholder="00000000"
-                placeholderTextColor="#A39171"
-                value={code}
-                onChangeText={setCode}
-                keyboardType="number-pad"
-                maxLength={8}
-                autoFocus
-                editable={!loading}
-                className="h-14 border border-malt bg-malt-card rounded-2xl text-center text-creme font-space text-2xl tracking-[6px] font-bold"
-              />
-            </View>
-
-            {/* CTA Verify */}
-            <View className="gap-4">
-              <Pressable 
-                onPress={handleVerify}
-                disabled={loading}
-                className="bg-turmeric h-12 rounded-xl flex-row justify-center items-center gap-2 active:opacity-90"
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#0D0B05" />
-                ) : (
-                  <>
-                    <Text className="text-malt-deep font-inter-bold text-sm font-bold">
-                      Valider le compte
-                    </Text>
-                    <ArrowRight size={16} color="#0D0B05" strokeWidth={2.5} />
-                  </>
-                )}
-              </Pressable>
-
-              {/* Back to register link */}
-              <Pressable 
-                onPress={handleBack} 
-                disabled={loading}
-                className="flex-row justify-center items-center gap-1.5"
-              >
-                <ArrowLeft size={12} color="#A39171" />
-                <Text className="text-sable font-inter text-xs font-semibold hover:text-creme">
-                  Retour à l'inscription
-                </Text>
-              </Pressable>
-            </View>
-
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          <Text
+            style={{
+              color:
+                !email || cooldown > 0 ? colors.textSecondary : colors.turmeric,
+            }}
+            className="font-inter text-xs font-bold"
+          >
+            {resending
+              ? 'Envoi…'
+              : cooldown > 0
+                ? `Renvoyer le code (${cooldown}s)`
+                : 'Renvoyer le code'}
+          </Text>
+        </Pressable>
+      </FormSection>
+    </FormScreen>
   );
 }

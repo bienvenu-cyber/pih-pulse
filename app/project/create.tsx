@@ -1,14 +1,29 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Sparkles, MapPin, Check } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Layers, MapPin, Sparkles, Users, Wrench } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Text, View } from 'react-native';
+import MediaPickerField from '../../components/MediaPickerField';
+import {
+  ChoiceGrid,
+  ChipSelect,
+  FormAlert,
+  FormField,
+  FormMultiline,
+  FormScreen,
+  FormSection,
+  ImpactBanner,
+  StepFooter,
+} from '../../components/ui/form/FormPrimitives';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { grantCreateProjectImpact } from '../../lib/hub';
+import { IMPACT_POINTS } from '../../lib/impact';
+import type { MediaAsset } from '../../lib/media';
 import { supabase } from '../../lib/supabase';
 
 const STATUS_OPTIONS = [
-  { id: 'idea', label: 'Idée', desc: 'Concept initial' },
-  { id: 'prototype', label: 'Prototype', desc: 'Maquette ou démo' },
-  { id: 'mvp', label: 'MVP', desc: 'Produit lancé' },
+  { id: 'idea', label: 'Idée', description: 'Concept initial' },
+  { id: 'prototype', label: 'Prototype', description: 'Maquette ou démo' },
+  { id: 'mvp', label: 'MVP', description: 'Produit lancé' },
 ];
 
 const ROLES_POOL = [
@@ -20,10 +35,23 @@ const ROLES_POOL = [
 ];
 
 const TECHS_POOL = [
-  'React Native', 'Figma', 'TypeScript', 'Node.js', 'Supabase', 'Python', 'IoT', 'PostgreSQL'
-];
+  'React Native',
+  'Figma',
+  'TypeScript',
+  'Node.js',
+  'Supabase',
+  'Python',
+  'IoT',
+  'PostgreSQL',
+].map((t) => ({ id: t, label: t }));
+
+const STEPS = ['Identité', 'Équipe', 'Médias'];
 
 export default function CreateProjectScreen() {
+  const { colors } = useThemeFlavor();
+  const router = useRouter();
+
+  const [step, setStep] = useState(0);
   const [name, setName] = useState('');
   const [tagline, setTagline] = useState('');
   const [description, setDescription] = useState('');
@@ -32,17 +60,56 @@ export default function CreateProjectScreen() {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [selectedTechs, setSelectedTechs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [userId, setUserId] = useState<string | null>(null);
+  const [media, setMedia] = useState<MediaAsset[]>([]);
 
-  const router = useRouter();
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setUserId(session.user.id);
+      setAuthChecking(false);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
+
+  const progress = useMemo(() => (step + 1) / STEPS.length, [step]);
+
+  const validateStep0 = () => {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) errs.name = 'Donne un nom à ton projet.';
+    if (!tagline.trim()) errs.tagline = 'Une tagline courte aide le feed.';
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleNext = () => {
+    setErrorMsg('');
+    if (step === 0 && !validateStep0()) return;
+    if (step < STEPS.length - 1) setStep((s) => s + 1);
+  };
 
   const handleBack = () => {
-    router.back();
+    setErrorMsg('');
+    if (step > 0) setStep((s) => s - 1);
+    else router.back();
   };
 
   const handleCreate = async () => {
-    if (!name || !tagline) {
-      setErrorMsg('Le nom du projet et le slogan sont obligatoires.');
+    if (!validateStep0()) {
+      setStep(0);
       return;
     }
 
@@ -50,26 +117,64 @@ export default function CreateProjectScreen() {
     setErrorMsg('');
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
       if (userError || !user) {
-        setErrorMsg("Vous devez être connecté pour publier un projet.");
-        setLoading(false);
+        router.replace('/login');
         return;
       }
 
-      // 1. Insérer le projet dans la table projects
-      const { data: projData, error: projError } = await supabase
+      const cover = media.find((m) => m.type === 'image')?.url || null;
+
+      // roles: stocker labels lisibles (pas seulement les ids chips)
+      const roleLabels = selectedRoles.map((id) => {
+        const found = ROLES_POOL.find((r) => r.id === id);
+        return found?.label || id;
+      });
+
+      const basePayload = {
+        name: name.trim(),
+        short_description: tagline.trim(),
+        description: description.trim() || tagline.trim(),
+        creator_id: user.id,
+        status,
+        skills_needed: selectedTechs,
+        avatar_url: cover,
+        media,
+      };
+
+      let projData: { id: string } | null = null;
+      let projError: { message: string } | null = null;
+
+      const fullInsert = await supabase
         .from('projects')
         .insert({
-          name: name,
-          short_description: tagline,
-          description: description || tagline,
-          creator_id: user.id,
-          status: status,
-          skills_needed: selectedTechs
+          ...basePayload,
+          location: location.trim() || 'Parakou',
+          roles_needed: roleLabels,
         })
         .select('id')
         .single();
+
+      if (fullInsert.error) {
+        // Colonnes pas encore migrées → insert basique
+        const basicInsert = await supabase
+          .from('projects')
+          .insert(basePayload)
+          .select('id')
+          .single();
+        projData = basicInsert.data;
+        projError = basicInsert.error;
+        if (!basicInsert.error && fullInsert.error) {
+          console.warn(
+            '[project/create] location/roles non persistés — lance FIX_PROJECT_LOCATION_ROLES.sql'
+          );
+        }
+      } else {
+        projData = fullInsert.data;
+      }
 
       if (projError) {
         setErrorMsg(projError.message);
@@ -77,252 +182,240 @@ export default function CreateProjectScreen() {
         return;
       }
 
-      // 2. Ajouter automatiquement le créateur comme membre de l'équipe (Fondateur)
       if (projData) {
-        const { error: memberError } = await supabase
-          .from('project_members')
-          .insert({
-            project_id: projData.id,
-            user_id: user.id,
-            role: 'Founder & Lead'
-          });
-
+        const { error: memberError } = await supabase.from('project_members').insert({
+          project_id: projData.id,
+          user_id: user.id,
+          role: 'Founder & Lead',
+        });
         if (memberError) {
-          console.error('Erreur lors de l’inscription du membre fondateur :', memberError.message);
+          console.error('Founder member:', memberError.message);
         }
+        await grantCreateProjectImpact(user.id, name.trim());
+        router.replace(`/project/${projData.id}`);
+        return;
       }
 
-      // Succès : retour à la liste et rafraîchissement
       router.back();
-    } catch (err: any) {
+    } catch {
       setErrorMsg('Une erreur inattendue est survenue.');
       setLoading(false);
     }
   };
 
-  const toggleRole = (roleId: string) => {
-    if (selectedRoles.includes(roleId)) {
-      setSelectedRoles(selectedRoles.filter(id => id !== roleId));
-    } else {
-      setSelectedRoles([...selectedRoles, roleId]);
-    }
-  };
-
-  const toggleTech = (tech: string) => {
-    if (selectedTechs.includes(tech)) {
-      setSelectedTechs(selectedTechs.filter(t => t !== tech));
-    } else {
-      setSelectedTechs([...selectedTechs, tech]);
-    }
-  };
-
   return (
-    <SafeAreaView className="flex-1 bg-malt-deep">
-      {/* custom Header */}
-      <View className="h-14 flex-row items-center justify-between px-6 bg-malt-nav border-b border-malt">
-        <Pressable onPress={handleBack} disabled={loading} className="w-9 h-9 rounded-full bg-malt-card border border-malt items-center justify-center">
-          <ArrowLeft size={18} color="#F5EDD6" />
-        </Pressable>
-        <Text className="text-creme font-space text-base font-bold">Nouveau Projet</Text>
-        <View className="w-9 h-9" />
+    <FormScreen
+      title="Nouveau projet"
+      subtitle={`${STEPS[step]} · ${step + 1}/${STEPS.length}`}
+      onBack={handleBack}
+      loading={authChecking}
+      progress={progress}
+      footer={
+        <StepFooter
+          showBack={step > 0}
+          onBack={() => setStep((s) => Math.max(0, s - 1))}
+          onNext={step < STEPS.length - 1 ? handleNext : handleCreate}
+          nextLabel={
+            step < STEPS.length - 1
+              ? 'Continuer'
+              : `Lancer le projet · +${IMPACT_POINTS.createProject}`
+          }
+          nextIcon={step === STEPS.length - 1 ? Sparkles : undefined}
+          loading={loading}
+        />
+      }
+    >
+      <ImpactBanner
+        points={IMPACT_POINTS.createProject}
+        label="Créer un projet crédite +25 Impact. Tu deviens Founder & Lead automatiquement."
+      />
+
+      {errorMsg ? <FormAlert message={errorMsg} /> : null}
+
+      {/* Step pills */}
+      <View className="flex-row gap-2">
+        {STEPS.map((label, i) => {
+          const active = i === step;
+          const done = i < step;
+          return (
+            <View
+              key={label}
+              style={{
+                backgroundColor: active || done ? colors.turmeric + '18' : colors.card,
+                borderColor: active ? colors.turmeric : colors.border,
+              }}
+              className="flex-1 border rounded-xl py-2 items-center"
+            >
+              <Text
+                style={{
+                  color: active || done ? colors.turmeric : colors.textSecondary,
+                }}
+                className="font-inter text-[10px] font-bold"
+              >
+                {i + 1}. {label}
+              </Text>
+            </View>
+          );
+        })}
       </View>
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-        className="flex-1"
-      >
-        <ScrollView 
-          className="flex-1"
-          contentContainerStyle={{ padding: 20, paddingBottom: 40, gap: 24 }}
-          showsVerticalScrollIndicator={false}
+      {step === 0 ? (
+        <FormSection
+          icon={Layers}
+          stepLabel="Étape 1"
+          title="Identité de la startup"
+          subtitle="Nom percutant + promesse claire en une ligne."
         >
-          {errorMsg ? (
-            <View className="bg-corail/15 border border-corail/30 p-4 rounded-2xl">
-              <Text className="text-corail font-inter text-xs font-semibold leading-5 text-center">
-                {errorMsg}
-              </Text>
-            </View>
-          ) : null}
+          <FormField
+            label="Nom du projet"
+            required
+            placeholder="Ex: WapiFood"
+            value={name}
+            onChangeText={(t) => {
+              setName(t);
+              if (fieldErrors.name) setFieldErrors((e) => ({ ...e, name: '' }));
+            }}
+            editable={!loading}
+            error={fieldErrors.name}
+            maxLength={60}
+            counter={{ current: name.length, max: 60 }}
+          />
+          <FormField
+            label="Slogan"
+            required
+            placeholder="Ex: Livraison repas via Mobile Money"
+            value={tagline}
+            onChangeText={(t) => {
+              setTagline(t);
+              if (fieldErrors.tagline) setFieldErrors((e) => ({ ...e, tagline: '' }));
+            }}
+            editable={!loading}
+            error={fieldErrors.tagline}
+            maxLength={120}
+            counter={{ current: tagline.length, max: 120 }}
+            hint="Visible en premier dans le feed"
+          />
+          <FormMultiline
+            label="Description"
+            placeholder="Problème, solution, pour qui, objectif 3 mois…"
+            value={description}
+            onChangeText={setDescription}
+            editable={!loading}
+            minHeight={120}
+            maxLength={1200}
+            counter={{ current: description.length, max: 1200 }}
+            hint="Optionnel mais fortement recommandé"
+          />
+        </FormSection>
+      ) : null}
 
-          {/* Section Identité */}
-          <View className="gap-4 bg-malt-card border border-malt rounded-3xl p-5">
-            <Text className="text-creme font-space text-[15px] font-bold mb-1">Identité de la startup</Text>
-            
-            {/* Nom */}
-            <View className="gap-1.5">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Nom du projet / Startup
-              </Text>
-              <TextInput
-                placeholder="Ex: WapiFood"
-                placeholderTextColor="#A39171"
-                value={name}
-                onChangeText={setName}
-                editable={!loading}
-                className="h-12 border border-malt bg-malt-deep rounded-xl px-4 text-creme font-inter text-sm"
-              />
-            </View>
-
-            {/* Tagline */}
-            <View className="gap-1.5">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Slogan / Description courte
-              </Text>
-              <TextInput
-                placeholder="Ex: Plateforme de livraison de repas par Mobile Money"
-                placeholderTextColor="#A39171"
-                value={tagline}
-                onChangeText={setTagline}
-                editable={!loading}
-                className="h-12 border border-malt bg-malt-deep rounded-xl px-4 text-creme font-inter text-sm"
-              />
-            </View>
-
-            {/* Description complète */}
-            <View className="gap-1.5">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Description détaillée
-              </Text>
-              <TextInput
-                placeholder="Décrivez le problème, votre solution et les objectifs de la startup..."
-                placeholderTextColor="#A39171"
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-                editable={!loading}
-                className="min-h-[100px] border border-malt bg-malt-deep rounded-xl p-4 text-creme font-inter text-sm"
-              />
-            </View>
-          </View>
-
-          {/* Section Statut & Localisation */}
-          <View className="gap-4 bg-malt-card border border-malt rounded-3xl p-5">
-            <Text className="text-creme font-space text-[15px] font-bold">État d'avancement</Text>
-            
-            {/* Statut Options Grid */}
-            <View className="flex-row gap-2">
-              {STATUS_OPTIONS.map(opt => {
-                const isSelected = status === opt.id;
-                return (
-                  <Pressable
-                    key={opt.id}
-                    onPress={() => setStatus(opt.id)}
-                    disabled={loading}
-                    className="flex-1 rounded-xl border p-3 items-center"
-                    style={{
-                      backgroundColor: isSelected ? 'rgba(255, 190, 11, 0.05)' : '#0D0B05',
-                      borderColor: isSelected ? '#FFBE0B' : '#261F12',
-                      borderWidth: 1.2
-                    }}
-                  >
-                    <Text className={`font-space text-xs font-bold ${isSelected ? 'text-turmeric' : 'text-creme'}`}>
-                      {opt.label}
-                    </Text>
-                    <Text className="text-sable font-inter text-[8px] text-center mt-0.5">
-                      {opt.desc}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {/* Localisation */}
-            <View className="gap-1.5 mt-2">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Ville / Localisation
-              </Text>
-              <View className="flex-row items-center border border-malt bg-malt-deep rounded-xl px-4 h-12 gap-2">
-                <MapPin size={16} color="#A39171" />
-                <TextInput
-                  placeholder="Ex: Parakou, Bénin (ou Remote)"
-                  placeholderTextColor="#A39171"
-                  value={location}
-                  onChangeText={setLocation}
-                  editable={!loading}
-                  className="flex-1 text-creme font-inter text-sm h-full"
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Section Besoins (Roles recherchés) */}
-          <View className="gap-4 bg-malt-card border border-malt rounded-3xl p-5">
-            <Text className="text-creme font-space text-[15px] font-bold">Rôles recherchés</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {ROLES_POOL.map(role => {
-                const isSelected = selectedRoles.includes(role.id);
-                return (
-                  <Pressable
-                    key={role.id}
-                    onPress={() => toggleRole(role.id)}
-                    disabled={loading}
-                    className="px-3 py-2 rounded-xl border flex-row items-center gap-1.5"
-                    style={{
-                      backgroundColor: isSelected ? '#F5EDD6' : '#0D0B05',
-                      borderColor: isSelected ? '#F5EDD6' : '#261F12',
-                      borderWidth: 1.2
-                    }}
-                  >
-                    <Text className={`font-inter text-xs font-medium ${isSelected ? 'text-malt-deep' : 'text-sable'}`}>
-                      {role.label}
-                    </Text>
-                    {isSelected && <Check size={12} color="#0D0B05" strokeWidth={2.5} />}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Section Technologies (Stack) */}
-          <View className="gap-4 bg-malt-card border border-malt rounded-3xl p-5">
-            <Text className="text-creme font-space text-[15px] font-bold">Stack Technique</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {TECHS_POOL.map(tech => {
-                const isSelected = selectedTechs.includes(tech);
-                return (
-                  <Pressable
-                    key={tech}
-                    onPress={() => toggleTech(tech)}
-                    disabled={loading}
-                    className="px-3 py-2 rounded-xl border flex-row items-center gap-1.5"
-                    style={{
-                      backgroundColor: isSelected ? '#F5EDD6' : '#0D0B05',
-                      borderColor: isSelected ? '#F5EDD6' : '#261F12',
-                      borderWidth: 1.2
-                    }}
-                  >
-                    <Text className={`font-inter text-xs font-medium ${isSelected ? 'text-malt-deep' : 'text-sable'}`}>
-                      {tech}
-                    </Text>
-                    {isSelected && <Check size={12} color="#0D0B05" strokeWidth={2.5} />}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* CTA Validation */}
-          <Pressable 
-            onPress={handleCreate}
-            disabled={loading}
-            className="bg-turmeric h-14 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90 mt-2"
+      {step === 1 ? (
+        <>
+          <FormSection
+            icon={Sparkles}
+            stepLabel="Étape 2"
+            title="Avancement"
+            subtitle="Où en es-tu vraiment ? La transparence attire les contributeurs."
           >
-            {loading ? (
-              <ActivityIndicator size="small" color="#0D0B05" />
-            ) : (
-              <>
-                <Sparkles size={18} color="#0D0B05" />
-                <Text className="text-malt-deep font-inter-bold text-base font-bold">
-                  Publier le Projet
-                </Text>
-              </>
-            )}
-          </Pressable>
+            <ChoiceGrid options={STATUS_OPTIONS} value={status} onChange={setStatus} />
+            <FormField
+              label="Localisation"
+              placeholder="Parakou, Bénin · Remote"
+              value={location}
+              onChangeText={setLocation}
+              leftIcon={MapPin}
+              editable={!loading}
+            />
+          </FormSection>
 
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          <FormSection
+            icon={Users}
+            title="Rôles recherchés"
+            subtitle="Qui veux-tu dans l’équipe maintenant ?"
+          >
+            <ChipSelect
+              options={ROLES_POOL}
+              values={selectedRoles}
+              onChange={setSelectedRoles}
+            />
+          </FormSection>
+
+          <FormSection
+            icon={Wrench}
+            title="Stack & compétences"
+            subtitle="Ce que le projet utilise ou cherche."
+          >
+            <ChipSelect
+              options={TECHS_POOL}
+              values={selectedTechs}
+              onChange={setSelectedTechs}
+            />
+          </FormSection>
+        </>
+      ) : null}
+
+      {step === 2 ? (
+        <FormSection
+          icon={Layers}
+          stepLabel="Étape 3"
+          title="Visuels & lancement"
+          subtitle="Une image forte multiplie les réactions. Récap avant publication."
+        >
+          <MediaPickerField
+            userId={userId}
+            value={media}
+            onChange={setMedia}
+            maxItems={4}
+            label="Cover & galerie"
+          />
+
+          <View
+            style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+            className="border rounded-2xl p-4 gap-2 mt-1"
+          >
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] uppercase font-bold tracking-wider">
+              Aperçu
+            </Text>
+            <Text style={{ color: colors.text }} className="font-space text-[16px] font-bold">
+              {name.trim() || 'Nom du projet'}
+            </Text>
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-[13px] leading-5">
+              {tagline.trim() || 'Ta tagline apparaîtra ici'}
+            </Text>
+            <View className="flex-row flex-wrap gap-2 mt-1">
+              <View
+                className="px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: colors.turmeric + '22' }}
+              >
+                <Text style={{ color: colors.turmeric }} className="font-inter text-[10px] font-bold">
+                  {(status || 'idea').toUpperCase()}
+                </Text>
+              </View>
+              {location.trim() ? (
+                <View
+                  className="px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+                    {location.trim()}
+                  </Text>
+                </View>
+              ) : null}
+              {selectedTechs.slice(0, 3).map((t) => (
+                <View
+                  key={t}
+                  className="px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+                    {t}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </FormSection>
+      ) : null}
+    </FormScreen>
   );
 }

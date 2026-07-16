@@ -1,22 +1,53 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Target, Calendar, Check } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Award, Calendar, Layers, Target } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
+import MediaPickerField from '../../components/MediaPickerField';
+import {
+  ChoiceGrid,
+  ChipSelect,
+  FormAlert,
+  FormField,
+  FormMultiline,
+  FormScreen,
+  FormSection,
+  ImpactBanner,
+  StepFooter,
+} from '../../components/ui/form/FormPrimitives';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { parseDurationToDeadline } from '../../lib/deadline';
+import { grantCreateMissionImpact } from '../../lib/hub';
+import { IMPACT_POINTS } from '../../lib/impact';
+import type { MediaAsset } from '../../lib/media';
 import { supabase } from '../../lib/supabase';
 
 const DIFFICULTY_OPTIONS = [
-  { id: 'easy', label: 'Facile', color: '#7CB87A' },
-  { id: 'medium', label: 'Moyen', color: '#FFBE0B' },
-  { id: 'hard', label: 'Difficile', color: '#E8634A' },
+  { id: 'easy', label: 'Facile', description: 'Quelques heures', color: '#7CB87A' },
+  { id: 'medium', label: 'Moyen', description: 'Quelques jours', color: '#FFBE0B' },
+  { id: 'hard', label: 'Difficile', description: 'Sprint sérieux', color: '#E8634A' },
 ];
 
 const SKILLS_POOL = [
-  'React Native', 'Figma', 'TypeScript', 'Node.js', 'Supabase', 'Python', 'Marketing', 'Agile'
-];
+  'React Native',
+  'Figma',
+  'TypeScript',
+  'Node.js',
+  'Supabase',
+  'Python',
+  'Marketing',
+  'Agile',
+].map((s) => ({ id: s, label: s }));
+
+const REWARD_PRESETS = [40, 80, 120, 200];
+const DURATION_PRESETS = ['3 jours', '5 jours', '7 jours', '14 jours', '48 h'];
+const STEPS = ['Brief', 'Récompense'];
 
 export default function CreateMissionScreen() {
-  const [projects, setProjects] = useState<any[]>([]);
+  const { colors } = useThemeFlavor();
+  const router = useRouter();
+
+  const [step, setStep] = useState(0);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -24,29 +55,73 @@ export default function CreateMissionScreen() {
   const [duration, setDuration] = useState('5 jours');
   const [difficulty, setDifficulty] = useState('medium');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  
   const [loading, setLoading] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-
-  const router = useRouter();
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [userId, setUserId] = useState<string | null>(null);
+  const [media, setMedia] = useState<MediaAsset[]>([]);
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    let mounted = true;
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setUserId(session.user.id);
+      setAuthChecking(false);
+      await fetchProjects(session.user.id);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
-  const fetchProjects = async () => {
+  const fetchProjects = async (uid: string) => {
     try {
-      const { data, error } = await supabase
+      const { data: memberships, error } = await supabase
+        .from('project_members')
+        .select('role, projects(id, name)')
+        .eq('user_id', uid);
+
+      if (error) {
+        setErrorMsg(error.message);
+        return;
+      }
+
+      const leadProjects = (memberships || [])
+        .filter((m: any) => {
+          const role = (m.role || '').toLowerCase();
+          return role.includes('founder') || role.includes('lead') || role.includes('creator');
+        })
+        .map((m: any) => {
+          const p = Array.isArray(m.projects) ? m.projects[0] : m.projects;
+          return p ? { id: p.id, name: p.name } : null;
+        })
+        .filter(Boolean) as { id: string; name: string }[];
+
+      const { data: owned } = await supabase
         .from('projects')
         .select('id, name')
-        .order('name');
-      
-      if (!error && data && data.length > 0) {
-        setProjects(data);
-        setSelectedProject(data[0].id);
+        .eq('creator_id', uid);
+
+      const byId = new Map<string, { id: string; name: string }>();
+      [...leadProjects, ...(owned || [])].forEach((p: any) => {
+        if (p?.id) byId.set(p.id, p);
+      });
+      const list = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+      if (list.length > 0) {
+        setProjects(list);
+        setSelectedProject(list[0].id);
       } else {
-        setErrorMsg('Aucun projet trouvé pour y attacher la mission.');
+        setErrorMsg('Aucun projet où tu es Founder/Lead. Crée un projet d’abord.');
       }
     } catch (err) {
       console.error(err);
@@ -55,17 +130,26 @@ export default function CreateMissionScreen() {
     }
   };
 
-  const handleBack = () => {
-    router.back();
+  const progress = useMemo(() => (step + 1) / STEPS.length, [step]);
+
+  const validateStep0 = () => {
+    const errs: Record<string, string> = {};
+    if (!selectedProject) errs.project = 'Choisis un projet.';
+    if (!title.trim()) errs.title = 'Le titre est obligatoire.';
+    setFieldErrors(errs);
+    if (Object.keys(errs).length) return false;
+    return true;
+  };
+
+  const handleNext = () => {
+    setErrorMsg('');
+    if (step === 0 && !validateStep0()) return;
+    if (step < STEPS.length - 1) setStep((s) => s + 1);
   };
 
   const handleCreate = async () => {
-    if (!selectedProject) {
-      setErrorMsg('Veuillez sélectionner un projet.');
-      return;
-    }
-    if (!title) {
-      setErrorMsg('Le titre de la mission est obligatoire.');
+    if (!validateStep0()) {
+      setStep(0);
       return;
     }
 
@@ -73,18 +157,61 @@ export default function CreateMissionScreen() {
     setErrorMsg('');
 
     try {
-      // 1. Insérer la mission dans la table missions
-      const { error } = await supabase
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) {
+        setErrorMsg('Tu dois être connecté pour créer une mission.');
+        setLoading(false);
+        return;
+      }
+
+      // Lead via membership OU créateur du projet
+      const { data: membership } = await supabase
+        .from('project_members')
+        .select('role')
+        .eq('project_id', selectedProject)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const { data: owned } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('id', selectedProject)
+        .eq('creator_id', user.id)
+        .maybeSingle();
+
+      const role = (membership?.role || '').toLowerCase();
+      const isLeadMember =
+        role.includes('founder') || role.includes('lead') || role.includes('creator');
+      const isCreator = !!owned;
+
+      if (!isLeadMember && !isCreator) {
+        setErrorMsg('Seuls les Founders et Leads peuvent créer des missions.');
+        setLoading(false);
+        return;
+      }
+
+      const deadline =
+        parseDurationToDeadline(duration) ||
+        parseDurationToDeadline('5 jours');
+
+      const { data: missionRow, error } = await supabase
         .from('missions')
         .insert({
           project_id: selectedProject,
-          title: title,
-          description: description || title,
-          difficulty: difficulty,
-          points_reward: parseInt(reward) || 50,
+          title: title.trim(),
+          description: description.trim() || title.trim(),
+          difficulty,
+          points_reward: parseInt(reward, 10) || 50,
           skills_required: selectedSkills,
-          status: 'open'
-        });
+          status: 'open',
+          deadline,
+          media,
+        })
+        .select('id')
+        .single();
 
       if (error) {
         setErrorMsg(error.message);
@@ -92,246 +219,250 @@ export default function CreateMissionScreen() {
         return;
       }
 
-      // Retourner en arrière
+      await grantCreateMissionImpact(user.id, title.trim());
+      if (missionRow?.id) {
+        router.replace(`/mission/${missionRow.id}`);
+        return;
+      }
       router.back();
-    } catch (err: any) {
+    } catch {
       setErrorMsg('Une erreur inattendue est survenue.');
       setLoading(false);
     }
   };
 
-  const toggleSkill = (skill: string) => {
-    if (selectedSkills.includes(skill)) {
-      setSelectedSkills(selectedSkills.filter(s => s !== skill));
-    } else {
-      setSelectedSkills([...selectedSkills, skill]);
-    }
-  };
-
-  if (projectsLoading) {
-    return (
-      <View className="flex-1 bg-malt-deep items-center justify-center">
-        <ActivityIndicator size="large" color="#FFBE0B" />
-      </View>
-    );
-  }
-
   return (
-    <SafeAreaView className="flex-1 bg-malt-deep">
-      {/* custom Header */}
-      <View className="h-14 flex-row items-center justify-between px-6 bg-malt-nav border-b border-malt">
-        <Pressable onPress={handleBack} disabled={loading} className="w-9 h-9 rounded-full bg-malt-card border border-malt items-center justify-center">
-          <ArrowLeft size={18} color="#F5EDD6" />
-        </Pressable>
-        <Text className="text-creme font-space text-base font-bold">Nouvelle Mission</Text>
-        <View className="w-9 h-9" />
-      </View>
+    <FormScreen
+      title="Nouvelle mission"
+      subtitle={`${STEPS[step]} · ${step + 1}/${STEPS.length}`}
+      onBack={() => {
+        if (step > 0) setStep((s) => s - 1);
+        else router.back();
+      }}
+      loading={authChecking || projectsLoading}
+      progress={progress}
+      footer={
+        <StepFooter
+          showBack={step > 0}
+          onBack={() => setStep((s) => Math.max(0, s - 1))}
+          onNext={step < STEPS.length - 1 ? handleNext : handleCreate}
+          nextLabel={
+            step < STEPS.length - 1
+              ? 'Continuer'
+              : `Publier · +${IMPACT_POINTS.createMission}`
+          }
+          nextIcon={step === STEPS.length - 1 ? Target : undefined}
+          loading={loading}
+          nextDisabled={projects.length === 0}
+        />
+      }
+    >
+      <ImpactBanner
+        points={IMPACT_POINTS.createMission}
+        label="Publier une mission crédite +15 Impact. Les contributeurs gagnent aussi à la validation."
+      />
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-        className="flex-1"
-      >
-        <ScrollView 
-          className="flex-1"
-          contentContainerStyle={{ padding: 20, paddingBottom: 40, gap: 24 }}
-          showsVerticalScrollIndicator={false}
+      {errorMsg ? <FormAlert message={errorMsg} /> : null}
+
+      {step === 0 ? (
+        <FormSection
+          icon={Target}
+          stepLabel="Étape 1"
+          title="Brief de la mission"
+          subtitle="Un titre actionnable + un livrable clair = plus de candidatures."
         >
-          {errorMsg ? (
-            <View className="bg-corail/15 border border-corail/30 p-4 rounded-2xl">
-              <Text className="text-corail font-inter text-xs font-semibold leading-5 text-center">
-                {errorMsg}
+          <View className="gap-1.5">
+            <Text
+              style={{ color: colors.textSecondary }}
+              className="font-inter text-[11px] font-semibold"
+            >
+              Projet associé *
+            </Text>
+            {projects.length === 0 ? (
+              <Text style={{ color: colors.corail }} className="font-inter text-[12px]">
+                Aucun projet lead. Crée un projet d’abord.
               </Text>
-            </View>
-          ) : null}
-
-          {/* Section Projet & Identité */}
-          <View className="gap-4 bg-malt-card border border-malt rounded-3xl p-5">
-            <Text className="text-creme font-space text-[15px] font-bold mb-1">Détails de la mission</Text>
-            
-            {/* Projet Associé */}
-            <View className="gap-1.5">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Projet associé
-              </Text>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
-              >
-                {projects.map(proj => {
-                  const isSelected = selectedProject === proj.id;
+            ) : (
+              <View className="flex-row flex-wrap gap-2">
+                {projects.map((proj) => {
+                  const active = selectedProject === proj.id;
                   return (
                     <Pressable
                       key={proj.id}
                       onPress={() => setSelectedProject(proj.id)}
-                      disabled={loading}
-                      className="px-4 py-3.5 rounded-xl border items-center bg-malt-deep"
                       style={{
-                        borderColor: isSelected ? '#FFBE0B' : '#261F12',
-                        borderWidth: 1.2
+                        backgroundColor: active ? colors.turmeric : colors.deep,
+                        borderColor: active ? colors.turmeric : colors.border,
                       }}
+                      className="border rounded-2xl px-3.5 py-2.5 flex-row items-center gap-2"
                     >
-                      <Text className={`font-space text-xs font-bold ${isSelected ? 'text-turmeric' : 'text-creme'}`}>
+                      <Layers
+                        size={14}
+                        color={active ? colors.onTurmeric : colors.textSecondary}
+                      />
+                      <Text
+                        style={{ color: active ? colors.onTurmeric : colors.text }}
+                        className="font-inter text-[12px] font-semibold"
+                      >
                         {proj.name}
                       </Text>
                     </Pressable>
                   );
                 })}
-              </ScrollView>
-            </View>
-
-            {/* Titre */}
-            <View className="gap-1.5 mt-2">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Titre de la mission
+              </View>
+            )}
+            {fieldErrors.project ? (
+              <Text style={{ color: colors.corail }} className="font-inter text-[11px]">
+                {fieldErrors.project}
               </Text>
-              <TextInput
-                placeholder="Ex: Développer la page d'authentification"
-                placeholderTextColor="#A39171"
-                value={title}
-                onChangeText={setTitle}
-                editable={!loading}
-                className="h-12 border border-malt bg-malt-deep rounded-xl px-4 text-creme font-inter text-sm"
-              />
-            </View>
-
-            {/* Description détaillée */}
-            <View className="gap-1.5">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Cahier des charges / Tâches
-              </Text>
-              <TextInput
-                placeholder="Décrivez précisément les tâches à réaliser et le livrable attendu..."
-                placeholderTextColor="#A39171"
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-                editable={!loading}
-                className="min-h-[100px] border border-malt bg-malt-deep rounded-xl p-4 text-creme font-inter text-sm"
-              />
-            </View>
+            ) : null}
           </View>
 
-          {/* Section Paramètres de récompense */}
-          <View className="gap-4 bg-malt-card border border-malt rounded-3xl p-5">
-            <Text className="text-creme font-space text-[15px] font-bold">Récompense & Difficulté</Text>
-            
-            {/* Difficulté */}
-            <View className="gap-1.5">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Niveau de difficulté
+          <FormField
+            label="Titre"
+            required
+            placeholder="Ex: Auth email + OTP sur mobile"
+            value={title}
+            onChangeText={(t) => {
+              setTitle(t);
+              if (fieldErrors.title) setFieldErrors((e) => ({ ...e, title: '' }));
+            }}
+            editable={!loading}
+            error={fieldErrors.title}
+            maxLength={100}
+            counter={{ current: title.length, max: 100 }}
+          />
+          <FormMultiline
+            label="Cahier des charges"
+            placeholder="Contexte, tâches, livrable attendu, critères d’acceptation…"
+            value={description}
+            onChangeText={setDescription}
+            editable={!loading}
+            minHeight={140}
+            maxLength={1500}
+            counter={{ current: description.length, max: 1500 }}
+          />
+        </FormSection>
+      ) : null}
+
+      {step === 1 ? (
+        <>
+          <FormSection
+            icon={Award}
+            stepLabel="Étape 2"
+            title="Difficulté & Impact"
+            subtitle="Calibre l’effort pour attirer le bon profil."
+          >
+            <ChoiceGrid
+              options={DIFFICULTY_OPTIONS}
+              value={difficulty}
+              onChange={setDifficulty}
+            />
+
+            <View className="gap-2">
+              <Text
+                style={{ color: colors.textSecondary }}
+                className="font-inter text-[11px] font-semibold"
+              >
+                Points de récompense
               </Text>
-              <View className="flex-row gap-2">
-                {DIFFICULTY_OPTIONS.map(opt => {
-                  const isSelected = difficulty === opt.id;
+              <View className="flex-row flex-wrap gap-2">
+                {REWARD_PRESETS.map((pts) => {
+                  const active = reward === String(pts);
                   return (
                     <Pressable
-                      key={opt.id}
-                      onPress={() => setDifficulty(opt.id)}
-                      disabled={loading}
-                      className="flex-1 rounded-xl border p-3 items-center bg-malt-deep"
+                      key={pts}
+                      onPress={() => setReward(String(pts))}
                       style={{
-                        borderColor: isSelected ? opt.color : '#261F12',
-                        borderWidth: 1.2
+                        backgroundColor: active ? colors.turmeric : colors.deep,
+                        borderColor: active ? colors.turmeric : colors.border,
                       }}
+                      className="border rounded-full px-4 py-2"
                     >
-                      <Text 
-                        className="font-space text-xs font-bold"
-                        style={{ color: isSelected ? opt.color : '#F5EDD6' }}
+                      <Text
+                        style={{ color: active ? colors.onTurmeric : colors.textSecondary }}
+                        className="font-space text-[12px] font-bold"
                       >
-                        {opt.label}
+                        {pts} pts
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-            </View>
-
-            {/* Points Reward */}
-            <View className="gap-1.5 mt-2">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Points de Réputation ({reward} pts)
-              </Text>
-              <TextInput
-                placeholder="Ex: 80"
-                placeholderTextColor="#A39171"
+              <FormField
+                label="Personnalisé"
+                placeholder="80"
                 value={reward}
                 onChangeText={setReward}
                 keyboardType="numeric"
                 editable={!loading}
-                className="h-12 border border-malt bg-malt-deep rounded-xl px-4 text-creme font-inter text-sm"
+                hint="Le contributeur gagne ces points à la validation"
               />
             </View>
 
-            {/* Durée estimée */}
-            <View className="gap-1.5">
-              <Text className="text-sable font-inter text-[11px] uppercase font-semibold tracking-wider">
-                Durée estimée
+            <View className="gap-2">
+              <Text
+                style={{ color: colors.textSecondary }}
+                className="font-inter text-[11px] font-semibold"
+              >
+                Durée estimée → échéance
               </Text>
-              <View className="flex-row items-center border border-malt bg-malt-deep rounded-xl px-4 h-12 gap-2">
-                <Calendar size={16} color="#A39171" />
-                <TextInput
-                  placeholder="Ex: 5 jours (ou 48 heures)"
-                  placeholderTextColor="#A39171"
-                  value={duration}
-                  onChangeText={setDuration}
-                  editable={!loading}
-                  className="flex-1 text-creme font-inter text-sm h-full"
-                />
+              <View className="flex-row flex-wrap gap-2">
+                {DURATION_PRESETS.map((d) => {
+                  const active = duration === d;
+                  return (
+                    <Pressable
+                      key={d}
+                      onPress={() => setDuration(d)}
+                      style={{
+                        backgroundColor: active ? colors.turmeric : colors.deep,
+                        borderColor: active ? colors.turmeric : colors.border,
+                      }}
+                      className="border rounded-full px-3.5 py-2"
+                    >
+                      <Text
+                        style={{
+                          color: active ? colors.onTurmeric : colors.textSecondary,
+                        }}
+                        className="font-inter text-[11px] font-semibold"
+                      >
+                        {d}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
+              <FormField
+                label="Personnalisé"
+                placeholder="Ex: 5 jours · 48 h · 2 semaines"
+                value={duration}
+                onChangeText={setDuration}
+                leftIcon={Calendar}
+                editable={!loading}
+                hint="Enregistré comme date limite (deadline) en base"
+              />
             </View>
-          </View>
+          </FormSection>
 
-          {/* Section Compétences clés */}
-          <View className="gap-4 bg-malt-card border border-malt rounded-3xl p-5">
-            <Text className="text-creme font-space text-[15px] font-bold">Compétences recherchées</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {SKILLS_POOL.map(skill => {
-                const isSelected = selectedSkills.includes(skill);
-                return (
-                  <Pressable
-                    key={skill}
-                    onPress={() => toggleSkill(skill)}
-                    disabled={loading}
-                    className="px-3 py-2 rounded-xl border flex-row items-center gap-1.5"
-                    style={{
-                      backgroundColor: isSelected ? '#F5EDD6' : '#0D0B05',
-                      borderColor: isSelected ? '#F5EDD6' : '#261F12',
-                      borderWidth: 1.2
-                    }}
-                  >
-                    <Text className={`font-inter text-xs font-medium ${isSelected ? 'text-malt-deep' : 'text-sable'}`}>
-                      {skill}
-                    </Text>
-                    {isSelected && <Check size={12} color="#0D0B05" strokeWidth={2.5} />}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
+          <FormSection title="Compétences" subtitle="Tags pour le matching « Pour moi ».">
+            <ChipSelect
+              options={SKILLS_POOL}
+              values={selectedSkills}
+              onChange={setSelectedSkills}
+            />
+          </FormSection>
 
-          {/* CTA Publication */}
-          <Pressable 
-            onPress={handleCreate}
-            disabled={loading}
-            className="bg-turmeric h-14 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90 mt-2"
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#0D0B05" />
-            ) : (
-              <>
-                <Target size={18} color="#0D0B05" />
-                <Text className="text-malt-deep font-inter-bold text-base font-bold">
-                  Publier la Mission
-                </Text>
-              </>
-            )}
-          </Pressable>
-
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          <FormSection title="Médias" subtitle="Mockups, captures, brief visuel (optionnel).">
+            <MediaPickerField
+              userId={userId}
+              value={media}
+              onChange={setMedia}
+              maxItems={3}
+              label="Pièces jointes"
+            />
+          </FormSection>
+        </>
+      ) : null}
+    </FormScreen>
   );
 }

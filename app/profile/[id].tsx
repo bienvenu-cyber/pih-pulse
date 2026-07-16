@@ -1,275 +1,580 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Award, Layers, Send } from 'lucide-react-native';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import {
+  Award,
+  CheckCircle,
+  CircleDot,
+  ExternalLink,
+  Layers,
+  Link2,
+  Send,
+  UserPlus,
+} from 'lucide-react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ThemedStackHeader from '../../components/ThemedStackHeader';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { isUserOnline } from '../../components/ProfileToggles';
+import { sendProjectInvite } from '../../lib/invites';
+import { formatLevelName, getLevelProgress } from '../../lib/reputation';
 import { supabase } from '../../lib/supabase';
 
-// Static fallback data
-const STATIC_TALENTS: Record<string, any> = {
-  '11111111-1111-1111-1111-111111111111': {
-    name: 'Inès Lawani',
-    username: '@ines_law',
-    role: 'UI/UX Designer',
-    points: 240,
-    skills: ['Figma', 'Prototypage', 'Wireframing', 'Illustrator', 'React Native'],
-    initials: 'IL',
-    bio: 'Designer passionnée par la création d’interfaces mobiles intuitives et élégantes.',
-    stats: { projects: 1, missions: 3 },
-    history: [
-      { id: '1', title: 'Créer la charte graphique & Logo de l’application WapiFood', reward: 'Collaborateur' }
-    ]
-  },
-  '22222222-2222-2222-2222-222222222222': {
-    name: 'Koffi Attignon',
-    username: '@koffi_att',
-    role: 'Lead Developer',
-    points: 380,
-    skills: ['React Native', 'TypeScript', 'Node.js', 'Supabase'],
-    initials: 'KA',
-    bio: 'Développeur passionné de Javascript et de plateformes Cloud.',
-    stats: { projects: 2, missions: 4 },
-    history: [
-      { id: '3', title: 'Intégrer les paiements Mobile Money MTN/Moov sur WapiFood', reward: 'Collaborateur' }
-    ]
-  }
-};
-
 export default function MemberProfileDetailsScreen() {
+  const { colors } = useThemeFlavor();
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  
+
   const [talent, setTalent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [meId, setMeId] = useState<string | null>(null);
+  const [myLeadProjects, setMyLeadProjects] = useState<any[]>([]);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState('');
 
-  useEffect(() => {
-    fetchTalentDetails();
-  }, [id]);
-
-  const fetchTalentDetails = async () => {
+  const fetchTalentDetails = useCallback(async () => {
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setMeId(user.id);
+        // Projets où je suis founder/lead (pour inviter)
+        const { data: memberships } = await supabase
+          .from('project_members')
+          .select('role, projects(id, name)')
+          .eq('user_id', user.id);
+        const leads = (memberships || [])
+          .filter((m: any) => {
+            const r = (m.role || '').toLowerCase();
+            return r.includes('founder') || r.includes('lead') || r.includes('creator');
+          })
+          .map((m: any) => {
+            const p = Array.isArray(m.projects) ? m.projects[0] : m.projects;
+            return p;
+          })
+          .filter(Boolean);
+
+        const { data: owned } = await supabase
+          .from('projects')
+          .select('id, name')
+          .eq('creator_id', user.id);
+        const byId = new Map<string, any>();
+        [...leads, ...(owned || [])].forEach((p: any) => {
+          if (p?.id) byId.set(p.id, p);
+        });
+        setMyLeadProjects(Array.from(byId.values()));
+      }
+
       const { data, error } = await supabase
         .from('profiles')
-        .select(`
+        .select(
+          `
           *,
-          project_members(project_id, projects(name))
-        `)
+          project_members(project_id, role, projects(id, name, status))
+        `
+        )
         .eq('id', id)
         .single();
 
-      if (error) {
-        console.error(error);
-        setTalent(STATIC_TALENTS[id as string] || STATIC_TALENTS['11111111-1111-1111-1111-111111111111']);
+      if (error || !data) {
+        setTalent(null);
         return;
       }
 
       const name = data.full_name || 'Talent';
-      const initials = name
-        .split(' ')
-        .map((n: string) => n[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase() || 'T';
+      const initials =
+        name
+          .split(' ')
+          .map((n: string) => n[0])
+          .join('')
+          .slice(0, 2)
+          .toUpperCase() || 'T';
 
-      // Format role label
       const roleRaw = data.role || 'developer';
-      const roleFormatted = roleRaw === 'product_creator' 
-        ? 'Product Owner' 
-        : roleRaw.charAt(0).toUpperCase() + roleRaw.slice(1);
+      const roleFormatted =
+        roleRaw === 'product_creator'
+          ? 'Product Owner'
+          : roleRaw.charAt(0).toUpperCase() + roleRaw.slice(1);
 
-      // Extract unique projects
-      const projectsList = (data.project_members || []).map((m: any) => (m.projects as any)?.name).filter(Boolean);
+      const projectsList = (data.project_members || [])
+        .map((m: any) => {
+          const p = Array.isArray(m.projects) ? m.projects[0] : m.projects;
+          return p
+            ? { id: p.id, name: p.name, status: p.status, role: m.role }
+            : null;
+        })
+        .filter(Boolean);
 
-      // Generate history from projects list or use placeholder
-      const historyList = projectsList.map((pName: string, idx: number) => ({
-        id: `p-${idx}`,
-        title: `A rejoint l’équipe du projet ${pName}`,
-        reward: 'Collaborateur'
-      }));
+      const { data: missions } = await supabase
+        .from('missions')
+        .select('id, title, status, points_reward, projects(name)')
+        .eq('assignee_id', data.id)
+        .order('created_at', { ascending: false });
 
-      if (historyList.length === 0) {
-        historyList.push({
-          id: 'h-welcome',
-          title: 'A rejoint la communauté PIH Pulse',
-          reward: '+20 pts'
-        });
-      }
+      const completed = (missions || []).filter((m: any) => m.status === 'completed');
+      const inProgress = (missions || []).filter(
+        (m: any) => m.status === 'in_progress' || m.status === 'review'
+      );
+
+      const portfolio = data.portfolio || {};
+      const portfolioLinks = [
+        { key: 'github', label: 'GitHub', url: portfolio.github },
+        { key: 'figma', label: 'Figma', url: portfolio.figma },
+        { key: 'linkedin', label: 'LinkedIn', url: portfolio.linkedin },
+        { key: 'website', label: 'Site', url: portfolio.website },
+      ].filter((l) => l.url);
+
+      // Présence publique : opt-in + last_seen < 5 min (heartbeat tabs)
+      const online = isUserOnline(data.show_online_presence, data.last_seen_at);
 
       setTalent({
         id: data.id,
-        name: name,
-        username: data.username ? `@${data.username}` : '@sans_nom',
+        name,
+        username: data.username ? `@${data.username}` : null,
         role: roleFormatted,
-        points: data.reputation_points ?? 20,
+        points: data.reputation_points ?? 0,
         skills: data.skills || [],
-        initials: initials,
-        bio: data.bio || 'Aucune description disponible.',
-        stats: {
-          projects: projectsList.length,
-          missions: data.reputation_points > 200 ? 3 : 1
-        },
-        history: historyList
+        initials,
+        bio: data.bio || null,
+        phone: data.phone || null,
+        avatarUrl: data.avatar_url || null,
+        available: data.available_for_missions !== false,
+        online,
+        projects: projectsList,
+        completedMissions: completed.map((m: any) => ({
+          id: m.id,
+          title: m.title,
+          reward: `+${m.points_reward} pts`,
+          project: (Array.isArray(m.projects) ? m.projects[0] : m.projects)?.name || 'Projet',
+        })),
+        activeMissions: inProgress.length,
+        portfolioLinks,
       });
-
     } catch (err) {
       console.error(err);
-      setTalent(STATIC_TALENTS[id as string] || STATIC_TALENTS['11111111-1111-1111-1111-111111111111']);
+      setTalent(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
-  const handleBack = () => {
-    router.back();
-  };
+  // Refresh à chaque focus (badge En ligne à jour)
+  useFocusEffect(
+    useCallback(() => {
+      void fetchTalentDetails();
+    }, [fetchTalentDetails])
+  );
 
   const handleContact = () => {
-    if (talent?.id) {
-      router.push(`/chat/${talent.id}`);
+    if (talent?.id) router.push(`/chat/${talent.id}`);
+  };
+
+  const handleInvite = async (project: { id: string; name: string }) => {
+    if (!meId || !talent?.id) return;
+    setInviteBusy(true);
+    setInviteMsg('');
+    try {
+      const res = await sendProjectInvite({
+        projectId: project.id,
+        projectName: project.name,
+        inviteeId: talent.id,
+        inviterId: meId,
+      });
+      if (res.error) {
+        setInviteMsg(res.error);
+        return;
+      }
+      setInviteMsg(`Invitation envoyée pour « ${project.name} ».`);
+      setTimeout(() => {
+        setInviteOpen(false);
+        setInviteMsg('');
+      }, 900);
+    } catch (e: any) {
+      setInviteMsg(e?.message || 'Erreur envoi invitation');
+    } finally {
+      setInviteBusy(false);
     }
   };
 
   if (loading) {
     return (
-      <View className="flex-1 bg-malt-deep items-center justify-center">
-        <ActivityIndicator size="large" color="#FFBE0B" />
+      <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color={colors.turmeric} />
       </View>
     );
   }
 
-  return (
-    <SafeAreaView className="flex-1 bg-malt-deep">
-      {/* custom Header */}
-      <View className="h-14 flex-row items-center justify-between px-6 bg-malt-nav border-b border-malt">
-        <Pressable onPress={handleBack} className="w-9 h-9 rounded-full bg-malt-card border border-malt items-center justify-center">
-          <ArrowLeft size={18} color="#F5EDD6" />
-        </Pressable>
-        <Text className="text-creme font-space text-base font-bold">Profil Talent</Text>
-        <View className="w-9 h-9" />
-      </View>
+  if (!talent) {
+    return (
+      <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ThemedStackHeader title="Profil" onBack={() => router.back()} />
+        <View className="flex-1 items-center justify-center px-8">
+          <Text style={{ color: colors.text }} className="font-space text-base font-bold mb-2">
+            Profil introuvable
+          </Text>
+          <Text style={{ color: colors.textSecondary }} className="font-inter text-xs text-center">
+            Ce talent n’existe pas ou n’est plus disponible.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-      <ScrollView 
+  const isSelf = meId === talent.id;
+  const level = getLevelProgress(talent.points);
+  const canInvite = !isSelf && myLeadProjects.length > 0;
+
+  return (
+    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
+      <ThemedStackHeader title="Profil talent" onBack={() => router.back()} />
+
+      <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Avatar & Main details */}
-        <View className="items-center mt-4 mb-6">
-          <View className="w-24 h-24 rounded-full bg-malt-card border-2 border-malt items-center justify-center mb-4">
-            <Text className="text-creme font-space text-3xl font-bold">
-              {talent.initials}
-            </Text>
+        {/* Hero aligné onglet Profil (stamp + dispo + rôle) */}
+        <View
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="border rounded-2xl p-4 mb-4 overflow-hidden"
+        >
+          <View className="flex-row items-start gap-3.5">
+            <View
+              style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+              className="w-[72px] h-[72px] rounded-full border-2 overflow-hidden items-center justify-center"
+            >
+              {talent.avatarUrl ? (
+                <Image
+                  source={{ uri: talent.avatarUrl }}
+                  style={{ width: 72, height: 72 }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={{ color: colors.text }} className="font-space text-2xl font-bold">
+                  {talent.initials}
+                </Text>
+              )}
+            </View>
+            <View className="flex-1 min-w-0 gap-0.5">
+              <Text
+                style={{ color: colors.text }}
+                className="font-space text-lg font-bold"
+                numberOfLines={1}
+              >
+                {talent.name}
+              </Text>
+              {talent.username ? (
+                <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+                  {talent.username}
+                </Text>
+              ) : null}
+              <View className="flex-row flex-wrap items-center gap-1.5 mt-1">
+                <View
+                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                  className="border px-2 py-0.5 rounded-full"
+                >
+                  <Text
+                    style={{ color: colors.textSecondary }}
+                    className="font-inter text-[10px] font-bold uppercase"
+                  >
+                    {talent.role}
+                  </Text>
+                </View>
+                {talent.available ? (
+                  <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-kaki/15 border border-kaki/30">
+                    <CircleDot size={10} color={colors.kaki} />
+                    <Text style={{ color: colors.kaki }} className="font-inter text-[10px] font-bold">
+                      Dispo
+                    </Text>
+                  </View>
+                ) : null}
+                {talent.online ? (
+                  <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-kaki/15 border border-kaki/30">
+                    <View className="w-1.5 h-1.5 rounded-full bg-kaki" />
+                    <Text style={{ color: colors.kaki }} className="font-inter text-[10px] font-bold">
+                      En ligne
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+            <View
+              style={{
+                borderColor: colors.turmeric + '50',
+                transform: [{ rotate: '12deg' }],
+              }}
+              className="mt-1 px-3 py-1.5 rounded-md border"
+            >
+              <Text
+                style={{ color: colors.turmeric, letterSpacing: 1.4 }}
+                className="font-space text-[12px] font-bold uppercase"
+              >
+                {formatLevelName(level.level)}
+              </Text>
+            </View>
           </View>
-          <Text className="text-creme font-space text-xl font-bold">
-            {talent.name}
-          </Text>
-          <Text className="text-sable font-inter text-sm mb-1">
-            {talent.username}
-          </Text>
-          <Text className="text-turmeric font-inter-semibold text-xs font-semibold uppercase tracking-wider">
-            {talent.role}
-          </Text>
         </View>
 
-        {/* Scoreboard / Stats Grid */}
-        <View className="flex-row gap-4 mb-6">
-          {/* Reputation Score Card */}
-          <View className="flex-1 bg-malt-card border border-malt rounded-3xl p-5 justify-between gap-4">
-            <View className="flex-row justify-between items-center">
-              <Text className="text-sable font-inter text-[10px] font-bold uppercase tracking-wider">
-                Réputation
-              </Text>
-              <Award size={14} color="#FFBE0B" />
-            </View>
-            <View>
-              <Text className="text-creme font-space text-3xl font-bold mb-1">
-                {talent.points}
-              </Text>
-              <Text className="text-sable font-inter text-xs">
-                points totaux
-              </Text>
-            </View>
-          </View>
-
-          {/* Stats Summary Card */}
-          <View className="flex-1 bg-malt-card border border-malt rounded-3xl p-5 justify-between gap-4">
-            <View className="flex-row justify-between items-center">
-              <Text className="text-sable font-inter text-[10px] font-bold uppercase tracking-wider">
-                Activité
-              </Text>
-              <Layers size={14} color="#A39171" />
-            </View>
-            <View className="gap-2">
-              <View className="flex-row justify-between">
-                <Text className="text-sable font-inter text-xs">Projets :</Text>
-                <Text className="text-creme font-inter-bold text-xs font-bold">{talent.stats.projects}</Text>
-              </View>
-              <View className="flex-row justify-between">
-                <Text className="text-sable font-inter text-xs">Missions :</Text>
-                <Text className="text-creme font-inter-bold text-xs font-bold">{talent.stats.missions}</Text>
-              </View>
-            </View>
-          </View>
+        {/* Stats */}
+        <View className="flex-row gap-3 mb-4">
+          <StatCard colors={colors} icon={Award} label="Impact" value={String(talent.points)} />
+          <StatCard
+            colors={colors}
+            icon={Layers}
+            label="Projets"
+            value={String(talent.projects.length)}
+          />
+          <StatCard
+            colors={colors}
+            icon={CheckCircle}
+            label="Validées"
+            value={String(talent.completedMissions.length)}
+          />
         </View>
 
-        {/* Bio / Bio Detail Card */}
-        {talent.bio && (
-          <View className="bg-malt-card border border-malt rounded-3xl p-5 gap-3 mb-6">
-            <Text className="text-creme font-space text-[15px] font-bold">À propos de moi</Text>
-            <Text className="text-sable font-inter text-sm leading-6">
+        {talent.bio ? (
+          <Section colors={colors} title="À propos">
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-sm leading-6">
               {talent.bio}
             </Text>
-          </View>
-        )}
+          </Section>
+        ) : null}
 
-        {/* Skills Tags */}
-        {talent.skills.length > 0 && (
-          <View className="bg-malt-card border border-malt rounded-3xl p-5 gap-3 mb-6">
-            <Text className="text-creme font-space text-[15px] font-bold">Compétences</Text>
+        {talent.skills.length > 0 ? (
+          <Section colors={colors} title="Compétences">
             <View className="flex-row flex-wrap gap-1.5">
               {talent.skills.map((skill: string) => (
-                <View key={skill} className="bg-malt-deep px-3 py-1.5 rounded-xl border border-malt">
-                  <Text className="text-creme font-inter text-xs font-medium">{skill}</Text>
+                <View
+                  key={skill}
+                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                  className="px-3 py-1.5 rounded-xl border"
+                >
+                  <Text style={{ color: colors.text }} className="font-inter text-xs font-medium">
+                    {skill}
+                  </Text>
                 </View>
               ))}
             </View>
+          </Section>
+        ) : null}
+
+        {talent.portfolioLinks.length > 0 ? (
+          <Section colors={colors} title="Portfolio">
+            <View className="gap-2">
+              {talent.portfolioLinks.map((l: any) => (
+                <Pressable
+                  key={l.key}
+                  onPress={() =>
+                    Linking.openURL(l.url.startsWith('http') ? l.url : `https://${l.url}`)
+                  }
+                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                  className="border rounded-xl px-3 h-11 flex-row items-center justify-between active:opacity-80"
+                >
+                  <View className="flex-row items-center gap-2">
+                    <Link2 size={14} color={colors.turmeric} />
+                    <Text style={{ color: colors.text }} className="font-inter text-xs font-bold">
+                      {l.label}
+                    </Text>
+                  </View>
+                  <ExternalLink size={12} color={colors.textSecondary} />
+                </Pressable>
+              ))}
+            </View>
+          </Section>
+        ) : null}
+
+        {talent.projects.length > 0 ? (
+          <Section colors={colors} title={`Projets (${talent.projects.length})`}>
+            <View className="gap-2">
+              {talent.projects.map((p: any) => (
+                <Pressable
+                  key={p.id}
+                  onPress={() => router.push(`/project/${p.id}`)}
+                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                  className="border rounded-xl px-3 py-3 flex-row justify-between items-center"
+                >
+                  <View className="flex-1 pr-2">
+                    <Text style={{ color: colors.text }} className="font-space text-xs font-bold">
+                      {p.name}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+                      {p.role || 'Membre'} · {p.status || 'idea'}
+                    </Text>
+                  </View>
+                  <ExternalLink size={12} color={colors.textSecondary} />
+                </Pressable>
+              ))}
+            </View>
+          </Section>
+        ) : null}
+
+        <Section colors={colors} title="Missions validées">
+          {talent.completedMissions.length === 0 ? (
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+              Aucune mission validée pour l’instant.
+            </Text>
+          ) : (
+            <View className="gap-3">
+              {talent.completedMissions.map((m: any) => (
+                <Pressable
+                  key={m.id}
+                  onPress={() => router.push(`/mission/${m.id}`)}
+                  className="flex-row justify-between items-start gap-2"
+                >
+                  <View className="flex-1">
+                    <Text
+                      style={{ color: colors.text }}
+                      className="font-inter text-xs font-medium leading-4"
+                      numberOfLines={2}
+                    >
+                      {m.title}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+                      {m.project}
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.turmeric }} className="font-inter text-xs font-bold">
+                    {m.reward}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </Section>
+
+        {/* CTAs */}
+        {!isSelf && (
+          <View className="gap-2 mt-2">
+            <Pressable
+              onPress={handleContact}
+              className="bg-turmeric h-12 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90"
+            >
+              <Send size={16} color="#0D0B05" style={{ transform: [{ rotate: '30deg' }] }} />
+              <Text className="text-malt-deep font-inter-bold text-sm font-bold">
+                Contacter
+              </Text>
+            </Pressable>
+            {canInvite ? (
+              <Pressable
+                onPress={() => setInviteOpen(true)}
+                style={{ borderColor: colors.border, backgroundColor: colors.card }}
+                className="border h-12 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90"
+              >
+                <UserPlus size={16} color={colors.text} />
+                <Text style={{ color: colors.text }} className="font-inter-bold text-sm font-bold">
+                  Inviter sur un projet
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         )}
+      </ScrollView>
 
-        {/* Recent Activity Logs */}
-        <View className="bg-malt-card border border-malt rounded-3xl p-5 gap-4 mb-6">
-          <Text className="text-creme font-space text-[15px] font-bold">Missions Réalisées</Text>
-          <View className="gap-4">
-            {talent.history.map((act: any) => (
-              <View 
-                key={act.id}
-                className="flex-row justify-between items-center border-b border-malt/30 pb-3 last:border-b-0 last:pb-0"
-              >
-                <View className="flex-1 pr-4 gap-1">
-                  <Text className="text-creme font-inter text-xs font-medium leading-4" numberOfLines={2}>
-                    {act.title}
-                  </Text>
-                </View>
-                <Text className="text-turmeric font-inter-semibold text-xs font-semibold">
-                  {act.reward}
-                </Text>
+      {/* Invite modal */}
+      <Modal visible={inviteOpen} transparent animationType="fade">
+        <View className="flex-1 bg-black/70 justify-end">
+          <View
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="border-t rounded-t-3xl p-5 gap-3 max-h-[70%]"
+          >
+            <Text style={{ color: colors.text }} className="font-space text-base font-bold">
+              Inviter {talent.name}
+            </Text>
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-xs mb-1">
+              Choisis un projet dont tu es lead. Une notification lui sera envoyée.
+            </Text>
+            <ScrollView className="max-h-64">
+              <View className="gap-2">
+                {myLeadProjects.map((p) => (
+                  <Pressable
+                    key={p.id}
+                    disabled={inviteBusy}
+                    onPress={() => handleInvite(p)}
+                    style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                    className="border rounded-xl px-4 py-3 active:opacity-80"
+                  >
+                    <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+                      {p.name}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
-            ))}
+            </ScrollView>
+            {inviteMsg ? (
+              <Text style={{ color: colors.turmeric }} className="font-inter text-xs text-center">
+                {inviteMsg}
+              </Text>
+            ) : null}
+            <Pressable
+              onPress={() => setInviteOpen(false)}
+              className="h-11 items-center justify-center"
+            >
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-sm font-bold">
+                Fermer
+              </Text>
+            </Pressable>
           </View>
         </View>
-
-        {/* CTA Contact */}
-        <Pressable 
-          onPress={handleContact}
-          className="bg-turmeric h-14 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90 mt-2"
-        >
-          <Send size={16} color="#0D0B05" style={{ transform: [{ rotate: '30deg' }] }} />
-          <Text className="text-malt-deep font-inter-bold text-base font-bold">
-            Contacter par messagerie
-          </Text>
-        </Pressable>
-
-      </ScrollView>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+function StatCard({
+  colors,
+  icon: Icon,
+  label,
+  value,
+}: {
+  colors: any;
+  icon: any;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View
+      style={{ backgroundColor: colors.card, borderColor: colors.border }}
+      className="flex-1 border rounded-2xl p-3 gap-1.5"
+    >
+      <Icon size={14} color={colors.turmeric} />
+      <Text style={{ color: colors.text }} className="font-space text-lg font-bold">
+        {value}
+      </Text>
+      <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function Section({
+  colors,
+  title,
+  children,
+}: {
+  colors: any;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View
+      style={{ backgroundColor: colors.card, borderColor: colors.border }}
+      className="border rounded-2xl p-4 gap-3 mb-3"
+    >
+      <Text style={{ color: colors.text }} className="font-space text-[14px] font-bold">
+        {title}
+      </Text>
+      {children}
+    </View>
   );
 }

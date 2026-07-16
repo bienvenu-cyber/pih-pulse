@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useThemeFlavor } from '../hooks/useThemeFlavor';
 import { supabase } from '../lib/supabase';
 
 export default function EntryPoint() {
+  const { colors } = useThemeFlavor();
   const router = useRouter();
 
   useEffect(() => {
@@ -20,8 +22,8 @@ export default function EntryPoint() {
   }, []);
 
   return (
-    <View className="flex-1 bg-malt-deep items-center justify-center">
-      <ActivityIndicator size="large" color="#FFBE0B" />
+    <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
+      <ActivityIndicator size="large" color={colors.turmeric} />
     </View>
   );
 }

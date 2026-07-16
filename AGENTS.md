@@ -16,7 +16,10 @@ Ce fichier contient les règles, contraintes et instructions que tout agent IA d
 
 ## 🎨 Charte Graphique Validée ("Premium Turmeric & Malt")
 
-L'application est **uniquement en mode sombre**. Les couleurs doivent respecter strictement les codes hexadécimaux suivants :
+L'application supporte **3 thèmes** sélectionnables par l'utilisateur dans le profil :
+1. **Malt Premium** (Sombre Doré) - Thème par défaut
+2. **Noir Absolu OLED** (Sombre Noir)
+3. **Papier & Or** (Mode Clair)
 
 * **Couleurs du Thème (Tailwind Config) :**
   - Fond de l'app (Malt profond) : `bg-malt-deep` (`#0D0B05`)
@@ -28,6 +31,11 @@ L'application est **uniquement en mode sombre**. Les couleurs doivent respecter 
   - Textes secondaires / Placeholder (Sable) : `text-sable` (`#A39171`)
   - Succès : `text-kaki` / `bg-kaki/15` (`#7CB87A`)
   - Danger / Erreurs : `text-corail` / `bg-corail/15` (`#E8634A`)
+
+* **Gestion des Thèmes :**
+  - Utiliser le hook `themeFlavor` avec valeurs : `'malt' | 'oled' | 'light'`
+  - Le thème est sauvegardé dans SecureStore (mobile) ou localStorage (web)
+  - Les couleurs s'adaptent dynamiquement selon le thème sélectionné
 
 * **Discipline d'utilisation du Jaune (Turmeric) :**
   Le jaune `#FFBE0B` doit être utilisé de manière extrêmement restreinte (maximum 5% de la surface de l'écran) :
@@ -43,7 +51,7 @@ L'application est **uniquement en mode sombre**. Les couleurs doivent respecter 
   1. **Feed** (icône `Home`)
   2. **Projets** (icône `Layers` — attention, ne pas utiliser d'icône Rocket)
   3. **Missions** (icône `Target`)
-  4. **Équipes** (icône `Users`)
+  4. **Talents** (icône `Users` — annuaire communauté, ex-« Équipes »)
   5. **Profil** (icône `User`)
 
 * **Header (En-tête de l'application) :**
