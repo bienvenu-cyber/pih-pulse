@@ -132,6 +132,7 @@ function RootLayoutNav() {
     <ThemeProvider value={colorScheme === 'dark' ? activeDarkTheme : activeDefaultTheme}>
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="config-error" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="register" options={{ headerShown: false }} />

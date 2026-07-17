@@ -1,6 +1,6 @@
 import 'react-native-url-polyfill/auto';
 import * as SecureStore from 'expo-secure-store';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
 const isWeb = Platform.OS === 'web';
@@ -35,14 +35,41 @@ const customStorageAdapter = {
   },
 };
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+/**
+ * URL / clé publiques Expo.
+ * Sur EAS Build : définir EXPO_PUBLIC_* dans l’environnement preview/production
+ * (sinon l’APK crashait avec « supabaseUrl is required »).
+ */
+export const supabaseUrl = (process.env.EXPO_PUBLIC_SUPABASE_URL || '').trim();
+export const supabaseAnonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: customStorageAdapter as any,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+export const isSupabaseConfigured =
+  supabaseUrl.startsWith('http') && supabaseAnonKey.length > 20;
+
+/**
+ * Placeholder valide uniquement pour éviter un throw au createClient
+ * si les env manquent — les appels API échoueront proprement.
+ */
+const FALLBACK_URL = 'https://placeholder.supabase.co';
+const FALLBACK_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2ODgwMH0.placeholder';
+
+if (!isSupabaseConfigured) {
+  console.error(
+    '[supabase] EXPO_PUBLIC_SUPABASE_URL / ANON_KEY manquants. ' +
+      'Ajoute-les dans EAS (preview/production) ou dans .env local.'
+  );
+}
+
+export const supabase: SupabaseClient = createClient(
+  isSupabaseConfigured ? supabaseUrl : FALLBACK_URL,
+  isSupabaseConfigured ? supabaseAnonKey : FALLBACK_KEY,
+  {
+    auth: {
+      storage: customStorageAdapter as any,
+      autoRefreshToken: isSupabaseConfigured,
+      persistSession: isSupabaseConfigured,
+      detectSessionInUrl: false,
+    },
+  }
+);

@@ -3,16 +3,14 @@ import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
 import { hasCompletedOnboarding } from '../lib/onboarding';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 /**
  * Entry point cold start :
- * 1) Session Supabase ? → tabs (utilisateur déjà connecté)
+ * 0) Config Supabase manquante (EAS env) → écran d’aide
+ * 1) Session Supabase ? → tabs
  * 2) Sinon onboarding déjà vu ? → login
  * 3) Sinon → onboarding (première ouverture)
- *
- * Splash natif Expo : affiché pendant le chargement des fonts (_layout),
- * puis cet écran (loader) le temps de résoudre la session.
  */
 export default function EntryPoint() {
   const { colors } = useThemeFlavor();
@@ -22,6 +20,11 @@ export default function EntryPoint() {
     let cancelled = false;
 
     (async () => {
+      if (!isSupabaseConfigured) {
+        router.replace('/config-error');
+        return;
+      }
+
       try {
         const {
           data: { session },
