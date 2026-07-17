@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
+import { markOnboardingDone } from '../lib/onboarding';
 
 const SLIDES = [
   {
@@ -21,9 +22,9 @@ const SLIDES = [
     accent: 'kaki' as const,
   },
   {
-    title: 'Missions & Réputation',
+    title: 'Missions & Élan',
     description:
-      'Réalisez des missions techniques (code, design, marketing), accumulez des points de réputation et validez vos compétences aux yeux de tous.',
+      'Réalisez des missions techniques (code, design, marketing), accumulez de l’Élan et validez vos compétences aux yeux de tous.',
     icon: Trophy,
     accent: 'corail' as const,
   },
@@ -32,18 +33,27 @@ const SLIDES = [
 export default function OnboardingScreen() {
   const { colors } = useThemeFlavor();
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [leaving, setLeaving] = useState(false);
   const router = useRouter();
+
+  /** Fin d’onboarding = une seule fois (flag local) → login */
+  const finishOnboarding = async () => {
+    if (leaving) return;
+    setLeaving(true);
+    await markOnboardingDone();
+    router.replace('/login');
+  };
 
   const handleNext = () => {
     if (currentSlide < SLIDES.length - 1) {
       setCurrentSlide(currentSlide + 1);
     } else {
-      router.replace('/login');
+      void finishOnboarding();
     }
   };
 
   const handleSkip = () => {
-    router.replace('/login');
+    void finishOnboarding();
   };
 
   const slide = SLIDES[currentSlide];
