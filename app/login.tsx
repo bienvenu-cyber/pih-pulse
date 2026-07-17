@@ -63,14 +63,21 @@ export default function LoginScreen() {
     }
 
     setSocialLoading(method);
-    const res = await signInWithOAuthProvider(method);
-    setSocialLoading(null);
-    if ('error' in res) {
-      if (res.error !== 'Connexion annulée.') setErrorMsg(res.error);
-      return;
+    try {
+      const res = await signInWithOAuthProvider(method);
+      if ('error' in res) {
+        if (res.error !== 'Connexion annulée.') {
+          setErrorMsg(res.error);
+        }
+        return;
+      }
+      const dest = await routeAfterAuth();
+      router.replace(dest);
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Connexion sociale impossible.');
+    } finally {
+      setSocialLoading(null);
     }
-    const dest = await routeAfterAuth();
-    router.replace(dest);
   };
 
   if (step === 'email') {

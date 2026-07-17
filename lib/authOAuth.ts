@@ -1,55 +1,121 @@
 /**
  * OAuth partagé (Google / GitHub / Apple) — login & register.
- * Apple : expo-apple-authentication sur iOS natif, sinon OAuth web Supabase.
+ *
+ * Flux :
+ * - Supabase signInWithOAuth + WebBrowser.openAuthSessionAsync
+ * - Callback : PKCE `?code=` → exchangeCodeForSession
+ *             ou tokens `#access_token=` → setSession
+ * - Apple iOS : expo-apple-authentication + signInWithIdToken
+ *
+ * Redirect à déclarer dans Supabase Auth → URL Configuration :
+ *   pihpulse://auth/callback
  */
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
-import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID_ANDROID =
-  '28246710238-kk9b3s7depknr7p9n0sbavrcpcql01e3.apps.googleusercontent.com';
-const GOOGLE_CLIENT_ID_IOS =
-  '28246710238-vb0vfusooed97smia5tuqomoqvonm3cs.apps.googleusercontent.com';
-const GOOGLE_CLIENT_ID_WEB =
-  '28246710238-2u40650vrnd8oteftorim7i433onbg5d.apps.googleusercontent.com';
-
 export type OAuthProvider = 'google' | 'github' | 'apple';
 
-export async function completeOAuthSession(resultUrl: string): Promise<boolean> {
-  const accessToken =
-    (() => {
-      try {
-        return new URL(resultUrl).searchParams.get('access_token');
-      } catch {
-        return null;
-      }
-    })() || resultUrl.match(/access_token=([^&]+)/)?.[1];
-  const refreshToken =
-    (() => {
-      try {
-        return new URL(resultUrl).searchParams.get('refresh_token');
-      } catch {
-        return null;
-      }
-    })() || resultUrl.match(/refresh_token=([^&]+)/)?.[1];
+const PROVIDER_LABEL: Record<OAuthProvider, string> = {
+  google: 'Google',
+  github: 'GitHub',
+  apple: 'Apple',
+};
 
+/** URI de retour stable (build standalone + dev client) */
+export function getOAuthRedirectUri(): string {
+  return AuthSession.makeRedirectUri({
+    scheme: 'pihpulse',
+    path: 'auth/callback',
+  });
+}
+
+/**
+ * Extrait query + hash d’une URL de callback (custom scheme inclus).
+ */
+function parseCallbackParams(resultUrl: string): URLSearchParams {
+  const params = new URLSearchParams();
+  try {
+    // Essai parser standard
+    const u = new URL(resultUrl);
+    u.searchParams.forEach((v, k) => params.set(k, v));
+    if (u.hash && u.hash.length > 1) {
+      const hashParams = new URLSearchParams(u.hash.replace(/^#/, ''));
+      hashParams.forEach((v, k) => params.set(k, v));
+    }
+  } catch {
+    // Fallback : pihpulse://... peut échouer sur d’anciens parsers
+    const q = resultUrl.includes('?') ? resultUrl.split('?')[1]?.split('#')[0] || '' : '';
+    const h = resultUrl.includes('#') ? resultUrl.split('#')[1] || '' : '';
+    const raw = [q, h].filter(Boolean).join('&');
+    raw.split('&').forEach((pair) => {
+      const [k, ...rest] = pair.split('=');
+      if (k) params.set(decodeURIComponent(k), decodeURIComponent(rest.join('=') || ''));
+    });
+  }
+  return params;
+}
+
+/**
+ * Établit la session Supabase à partir de l’URL de retour OAuth.
+ */
+export async function completeOAuthSession(
+  resultUrl: string
+): Promise<{ ok: true } | { error: string }> {
+  const params = parseCallbackParams(resultUrl);
+
+  const providerError =
+    params.get('error_description') ||
+    params.get('error') ||
+    params.get('message');
+  if (providerError) {
+    console.warn('[oauth] provider error:', providerError);
+    return {
+      error: decodeURIComponent(providerError.replace(/\+/g, ' ')),
+    };
+  }
+
+  // 1) PKCE (défaut supabase-js récent)
+  const code = params.get('code');
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      console.warn('[oauth] exchangeCodeForSession:', error.message);
+      return { error: error.message || 'Échange de code OAuth échoué.' };
+    }
+    if (data.session) return { ok: true };
+  }
+
+  // 2) Tokens implicites (hash ou query)
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token') || '';
   if (accessToken) {
     const { error } = await supabase.auth.setSession({
       access_token: accessToken,
-      refresh_token: refreshToken || '',
+      refresh_token: refreshToken,
     });
-    if (error) return false;
+    if (error) {
+      console.warn('[oauth] setSession:', error.message);
+      return { error: error.message || 'Session OAuth impossible.' };
+    }
+    return { ok: true };
   }
 
+  // 3) Session déjà posée par le client
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return !!session;
+  if (session) return { ok: true };
+
+  return {
+    error:
+      'Session non établie. Vérifie les Redirect URLs Supabase (pihpulse://auth/callback).',
+  };
 }
 
 async function signInWithAppleNative(): Promise<{ ok: true } | { error: string }> {
@@ -100,71 +166,70 @@ async function signInWithAppleNative(): Promise<{ ok: true } | { error: string }
 export async function signInWithOAuthProvider(
   provider: OAuthProvider
 ): Promise<{ ok: true } | { error: string }> {
-  // Apple iOS : flux natif (meilleure UX store)
+  // Apple iOS : flux natif
   if (provider === 'apple' && Platform.OS === 'ios') {
     return signInWithAppleNative();
   }
 
+  // Apple hors iOS : OAuth navigateur Supabase (pas de Sign in with Apple natif)
   try {
-    const redirectUri = AuthSession.makeRedirectUri({
-      scheme: 'pihpulse',
-      path: 'auth/callback',
+    const redirectUri = getOAuthRedirectUri();
+    console.log('[oauth] redirectUri=', redirectUri, 'provider=', provider);
+
+    /**
+     * Important : ne PAS forcer client_id Google Android/iOS ici.
+     * Supabase utilise le Client ID **Web** configuré dans le dashboard.
+     * Injecter un client Android cassait souvent « Accès bloqué » / invalid_request.
+     */
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: redirectUri,
+        skipBrowserRedirect: true,
+        queryParams:
+          provider === 'google'
+            ? {
+                // UX : forcer le choix de compte
+                prompt: 'select_account',
+              }
+            : undefined,
+      },
     });
 
-    const options: any = {
-      redirectTo: redirectUri,
-      skipBrowserRedirect: true,
-    };
-
-    if (provider === 'google') {
-      const clientId = Platform.select({
-        ios: GOOGLE_CLIENT_ID_IOS,
-        android: GOOGLE_CLIENT_ID_ANDROID,
-        default: GOOGLE_CLIENT_ID_WEB,
-      })!;
-      options.queryParams = {
-        client_id: clientId,
-        access_type: 'offline',
-        prompt: 'consent',
+    if (error) {
+      console.warn('[oauth] signInWithOAuth:', error.message);
+      return {
+        error:
+          error.message ||
+          `Impossible d’initialiser ${PROVIDER_LABEL[provider]}. Active le provider dans Supabase Auth.`,
       };
     }
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options,
-    });
-
-    if (error || !data?.url) {
-      const labels: Record<OAuthProvider, string> = {
-        google: 'Google',
-        github: 'GitHub',
-        apple: 'Apple',
-      };
+    if (!data?.url) {
       return {
-        error: `Impossible d’initialiser ${labels[provider]}. Vérifie la config Supabase Auth.`,
+        error: `URL OAuth manquante pour ${PROVIDER_LABEL[provider]}. Vérifie Supabase → Authentication → Providers.`,
       };
     }
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
-    if (result.type !== 'success' || !result.url) {
+
+    if (result.type === 'cancel' || result.type === 'dismiss') {
+      return { error: 'Connexion annulée.' };
+    }
+    if (result.type !== 'success' || !('url' in result) || !result.url) {
       return { error: 'Connexion annulée.' };
     }
 
-    const ok = await completeOAuthSession(result.url);
-    if (!ok) return { error: 'Session non établie. Réessaie.' };
-    return { ok: true };
-  } catch (e) {
+    return completeOAuthSession(result.url);
+  } catch (e: any) {
     console.error(`${provider} OAuth error:`, e);
-    const labels: Record<OAuthProvider, string> = {
-      google: 'Google',
-      github: 'GitHub',
-      apple: 'Apple',
+    return {
+      error: e?.message || `Erreur ${PROVIDER_LABEL[provider]}.`,
     };
-    return { error: `Erreur ${labels[provider]}.` };
   }
 }
 
-/** Après OAuth : profile-setup si pas de rôle, sinon feed */
+/** Après auth : profile-setup si pas de rôle, sinon feed */
 export async function routeAfterAuth(): Promise<'/profile-setup' | '/(tabs)'> {
   const {
     data: { session },
@@ -174,7 +239,13 @@ export async function routeAfterAuth(): Promise<'/profile-setup' | '/(tabs)'> {
     .from('profiles')
     .select('role')
     .eq('id', session.user.id)
-    .single();
-  if (!profile?.role) return '/profile-setup';
+    .maybeSingle();
+  // role a une valeur par défaut 'developer' au signup — considérer setup si bio/skills vides
+  if (!profile) return '/profile-setup';
+  const needsSetup =
+    !profile.role ||
+    // si le trigger a mis developer par défaut, on laisse passer tabs
+    false;
+  if (needsSetup) return '/profile-setup';
   return '/(tabs)';
 }
