@@ -16,6 +16,7 @@ import MediaCarousel from '../../components/MediaCarousel';
 import PostAuthorHeader from '../../components/PostAuthorHeader';
 import ReactionBar from '../../components/ReactionBar';
 import ReplySection from '../../components/ReplySection';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
 import { deleteHubPost, fetchPostById, postCaption, type HubPost } from '../../lib/posts';
@@ -95,8 +96,8 @@ export default function PostDetailScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View className="flex-1" style={{ backgroundColor: colors.bg }}>
+        <ScreenSkeleton variant="detail" />
       </View>
     );
   }

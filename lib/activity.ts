@@ -282,23 +282,35 @@ export async function notifyMany(
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-  await supabase
-    .from('activity_notifications')
-    .update({ is_read: true })
-    .eq('id', id)
-    .eq('user_id', user.id);
+  if (!id || String(id).startsWith('sys-')) return;
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase
+      .from('activity_notifications')
+      .update({ is_read: true })
+      .eq('id', id)
+      .eq('user_id', user.id);
+    if (error) console.warn('[notifs] mark read:', error.message);
+  } catch (e) {
+    console.warn('[notifs] mark read failed:', e);
+  }
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<void> {
-  await supabase
-    .from('activity_notifications')
-    .update({ is_read: true })
-    .eq('user_id', userId)
-    .eq('is_read', false);
+  if (!userId) return;
+  try {
+    const { error } = await supabase
+      .from('activity_notifications')
+      .update({ is_read: true })
+      .eq('user_id', userId)
+      .eq('is_read', false);
+    if (error) console.warn('[notifs] mark all:', error.message);
+  } catch (e) {
+    console.warn('[notifs] mark all failed:', e);
+  }
 }
 
 export async function fetchUnreadCount(userId: string): Promise<number> {
@@ -310,47 +322,81 @@ export async function fetchUnreadCount(userId: string): Promise<number> {
   return count ?? 0;
 }
 
+/** Cache mémoire session — affichage instantané au re-focus. */
+let notifSessionCache: {
+  userId: string;
+  items: ActivityNotification[];
+  at: number;
+} | null = null;
+
+export function getCachedNotifications(userId: string): ActivityNotification[] | null {
+  if (!notifSessionCache || notifSessionCache.userId !== userId) return null;
+  // 5 min de fraîcheur pour hydrater l’UI (revalidation en arrière-plan)
+  if (Date.now() - notifSessionCache.at > 5 * 60_000) return null;
+  return notifSessionCache.items;
+}
+
+function setCachedNotifications(userId: string, items: ActivityNotification[]) {
+  notifSessionCache = { userId, items, at: Date.now() };
+}
+
 export async function fetchNotifications(
   userId: string,
   opts?: { limit?: number; before?: string }
-): Promise<ActivityNotification[]> {
-  const limit = opts?.limit ?? 40;
-  let q = supabase
-    .from('activity_notifications')
-    .select(
-      `
+): Promise<{ rows: ActivityNotification[]; hasMore: boolean }> {
+  if (!userId) return { rows: [], hasMore: false };
+  const limit = Math.min(Math.max(opts?.limit ?? 30, 1), 80);
+
+  try {
+    let q = supabase
+      .from('activity_notifications')
+      .select(
+        `
       id, user_id, actor_id, type, title, body, route, ref_id, ref_type, is_read, created_at,
       actor:profiles!actor_id(id, full_name, avatar_url)
     `
-    )
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-
-  if (opts?.before) {
-    q = q.lt('created_at', opts.before);
-  }
-
-  const { data, error } = await q;
-  if (error) {
-    // Fallback sans join actor
-    const basic = await supabase
-      .from('activity_notifications')
-      .select('*')
+      )
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (basic.error) {
-      console.warn('[notifs]', basic.error.message);
-      return [];
-    }
-    return (basic.data || []) as ActivityNotification[];
-  }
 
-  return (data || []).map((row: any) => ({
-    ...row,
-    actor: Array.isArray(row.actor) ? row.actor[0] : row.actor,
-  }));
+    if (opts?.before) {
+      q = q.lt('created_at', opts.before);
+    }
+
+    const { data, error } = await q;
+    if (error) {
+      // Fallback sans join actor
+      let basicQ = supabase
+        .from('activity_notifications')
+        .select(
+          'id, user_id, actor_id, type, title, body, route, ref_id, ref_type, is_read, created_at'
+        )
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (opts?.before) basicQ = basicQ.lt('created_at', opts.before);
+      const basic = await basicQ;
+      if (basic.error) {
+        console.warn('[notifs]', basic.error.message);
+        return { rows: [], hasMore: false };
+      }
+      const rows = (basic.data || []) as ActivityNotification[];
+      if (!opts?.before) setCachedNotifications(userId, rows);
+      return { rows, hasMore: rows.length >= limit };
+    }
+
+    const rows = (data || []).map((row: any) => ({
+      ...row,
+      actor: Array.isArray(row.actor) ? row.actor[0] ?? null : row.actor ?? null,
+    })) as ActivityNotification[];
+
+    if (!opts?.before) setCachedNotifications(userId, rows);
+    return { rows, hasMore: rows.length >= limit };
+  } catch (e) {
+    console.warn('[notifs] fetch failed:', e);
+    return { rows: [], hasMore: false };
+  }
 }
 
 /**

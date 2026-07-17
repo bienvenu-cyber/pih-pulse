@@ -31,8 +31,10 @@ export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+// Garde le splash natif jusqu’à fonts + premier paint (évite écran blanc / flash).
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // no-op si déjà géré par le runtime
+});
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -50,9 +52,12 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
+    if (!loaded) return;
+    // Filet de sécurité (deep link / route hors index) : ne jamais coller le splash natif.
+    const t = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 3000);
+    return () => clearTimeout(t);
   }, [loaded]);
 
   if (!loaded) {

@@ -2,8 +2,9 @@ import * as Notifications from 'expo-notifications';
 import { Tabs, useRouter } from 'expo-router';
 import { Home, Layers, Target, User, Users } from 'lucide-react-native';
 import { useEffect } from 'react';
-import { ActivityIndicator, AppState, Platform, View, type AppStateStatus } from 'react-native';
+import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BrandedSplash } from '../../components/BrandedSplash';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { registerForPushNotificationsAsync, savePushToken } from '../../lib/notifications';
@@ -15,7 +16,8 @@ export default function TabLayout() {
   const { colors } = useThemeFlavor();
   const { ready } = useRequireAuth();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = 52 + Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 6);
+  // Icônes seules : barre plus compacte (safe area + zone tactile)
+  const tabBarHeight = 50 + Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 6);
 
   useEffect(() => {
     if (!ready) return;
@@ -80,25 +82,18 @@ export default function TabLayout() {
     };
   }, [ready]);
 
+  // Même branding splash pendant le check auth (pas de flash spinner).
   if (!ready) {
-    return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
-        <ActivityIndicator color={colors.turmeric} />
-      </View>
-    );
+    return <BrandedSplash />;
   }
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarActiveTintColor: colors.turmeric,
         tabBarInactiveTintColor: colors.textSecondary,
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
-          marginBottom: Platform.OS === 'ios' ? 0 : 4,
-        },
         tabBarStyle: {
           backgroundColor: colors.tabBarBg,
           borderTopColor: colors.border,
@@ -108,13 +103,13 @@ export default function TabLayout() {
           right: 0,
           height: tabBarHeight,
           paddingBottom: Math.max(insets.bottom, 6),
-          paddingTop: 6,
+          paddingTop: 8,
           borderTopWidth: 1,
           elevation: 0,
           shadowOpacity: 0,
         },
         tabBarItemStyle: {
-          paddingTop: 2,
+          paddingTop: 4,
         },
       }}
     >
@@ -123,7 +118,7 @@ export default function TabLayout() {
         options={{
           title: 'Feed',
           tabBarAccessibilityLabel: 'Feed',
-          tabBarIcon: ({ color }) => <Home size={20} color={color} />,
+          tabBarIcon: ({ color }) => <Home size={22} color={color} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
@@ -131,7 +126,7 @@ export default function TabLayout() {
         options={{
           title: 'Projets',
           tabBarAccessibilityLabel: 'Projets',
-          tabBarIcon: ({ color }) => <Layers size={20} color={color} />,
+          tabBarIcon: ({ color }) => <Layers size={22} color={color} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
@@ -139,7 +134,7 @@ export default function TabLayout() {
         options={{
           title: 'Missions',
           tabBarAccessibilityLabel: 'Missions',
-          tabBarIcon: ({ color }) => <Target size={20} color={color} />,
+          tabBarIcon: ({ color }) => <Target size={22} color={color} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
@@ -147,7 +142,7 @@ export default function TabLayout() {
         options={{
           title: 'Talents',
           tabBarAccessibilityLabel: 'Talents',
-          tabBarIcon: ({ color }) => <Users size={20} color={color} />,
+          tabBarIcon: ({ color }) => <Users size={22} color={color} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
@@ -155,7 +150,7 @@ export default function TabLayout() {
         options={{
           title: 'Profil',
           tabBarAccessibilityLabel: 'Profil',
-          tabBarIcon: ({ color }) => <User size={20} color={color} />,
+          tabBarIcon: ({ color }) => <User size={22} color={color} strokeWidth={2} />,
         }}
       />
     </Tabs>

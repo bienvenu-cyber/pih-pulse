@@ -9,7 +9,6 @@ import {
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
@@ -27,6 +26,8 @@ import MediaCarousel from '../../components/MediaCarousel';
 import PostAuthorHeader from '../../components/PostAuthorHeader';
 import ReactionBar from '../../components/ReactionBar';
 import ReplyCountBadge from '../../components/ReplyCountBadge';
+import ListSkeleton from '../../components/ui/ListSkeleton';
+import LoadMoreFooter from '../../components/ui/LoadMoreFooter';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
 import type { MediaAsset } from '../../lib/media';
@@ -455,8 +456,8 @@ export default function FeedScreen() {
     else if (y < lastOffsetY.current - 15) setHeaderVisible(true);
     lastOffsetY.current = y;
 
-    // Infinite scroll : d’abord élargir le slice UI, puis page serveur
-    const nearBottom = y + layoutMeasurement.height >= contentSize.height - 220;
+    // Infinite scroll : élargir le slice UI près du bas (page serveur via useEffect)
+    const nearBottom = y + layoutMeasurement.height >= contentSize.height - 280;
     if (nearBottom) {
       setVisibleCount((v) => v + FEED_PAGE_SIZE);
     }
@@ -608,11 +609,12 @@ export default function FeedScreen() {
     setVisibleCount(FEED_PAGE_SIZE);
   }, [tab]);
 
-  // Quand le slice UI approche la fin du buffer et qu’il reste du serveur → page suivante
+  // Près de la fin du buffer (ou buffer déjà tout affiché) → page serveur
   useEffect(() => {
     if (loadingMoreRef.current) return;
     if (!hasMoreServerRef.current || rawItems.length === 0) return;
-    if (visibleCount < rawItems.length - FEED_PAGE_SIZE) return;
+    // Prefetch quand il reste moins d’1 page non affichée
+    if (visibleCount < rawItems.length - Math.floor(FEED_PAGE_SIZE / 2)) return;
     void fetchFeed('more');
   }, [visibleCount, rawItems.length, fetchFeed]);
 
@@ -677,14 +679,6 @@ export default function FeedScreen() {
     else if (item.type === 'event') router.push(`/event/${item.id}`);
   };
 
-  if (loading) {
-    return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
-        <ActivityIndicator size="large" color={colors.turmeric} />
-      </View>
-    );
-  }
-
   return (
     <View className="flex-1" style={{ backgroundColor: colors.bg }}>
       {/* Header : + type Insta (remplace le titre) → menu création, post en principal */}
@@ -694,6 +688,13 @@ export default function FeedScreen() {
         onCreatePress={() => setCreateOpen(true)}
       />
 
+      {loading ? (
+        <View style={{ paddingTop: headerOffset + 8, paddingHorizontal: 16, flex: 1 }}>
+          <ListSkeleton count={4} variant="card" />
+        </View>
+      ) : null}
+
+      {!loading ? (
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -923,42 +924,15 @@ export default function FeedScreen() {
                   </View>
                 );
               })}
-              {loadingMore ? (
-                <View className="py-4 items-center">
-                  <ActivityIndicator color={colors.turmeric} />
-                </View>
-              ) : hasMore ? (
-                <Pressable
-                  onPress={() => {
-                    setVisibleCount((v) => v + FEED_PAGE_SIZE);
-                    if (visibleCount + FEED_PAGE_SIZE >= feedItems.length && hasMoreServer) {
-                      void fetchFeed('more');
-                    }
-                  }}
-                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                  className="border rounded-2xl py-3.5 items-center active:opacity-85"
-                >
-                  <Text style={{ color: colors.text }} className="font-inter text-xs font-bold">
-                    Charger plus
-                    {visibleCount < feedItems.length
-                      ? ` · ${feedItems.length - visibleCount} en mémoire`
-                      : hasMoreServer
-                        ? ' · suite du hub'
-                        : ''}
-                  </Text>
-                </Pressable>
-              ) : feedItems.length > FEED_PAGE_SIZE ? (
-                <Text
-                  style={{ color: colors.textSecondary }}
-                  className="font-inter text-[10px] text-center py-2"
-                >
-                  Fin du fil · {feedItems.length} éléments
-                </Text>
-              ) : null}
+              <LoadMoreFooter
+                loading={loadingMore}
+                hasMore={hasMore}
+              />
             </>
           )}
         </View>
       </ScrollView>
+      ) : null}
 
       <CreateHubSheet visible={createOpen} onClose={() => setCreateOpen(false)} />
     </View>

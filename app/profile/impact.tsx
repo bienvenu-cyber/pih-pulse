@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime } from '../../lib/formatTime';
 import {
@@ -74,8 +75,8 @@ export default function ImpactHistoryScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View className="flex-1" style={{ backgroundColor: colors.bg }}>
+        <ScreenSkeleton variant="detail" />
       </View>
     );
   }

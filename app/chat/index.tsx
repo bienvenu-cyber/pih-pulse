@@ -2,7 +2,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ArrowLeft, Check, CheckCheck, MessageCircle, Search, Send } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,12 +10,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ProfileAvatar } from '../../components/ProfileAvatar';
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { countProjectChatUnreadBatch } from '../../lib/chatRead';
-import { formatRelativeTime } from '../../lib/formatTime';
+import { formatRelativeTime, formatRoleLabel, getInitials } from '../../lib/formatTime';
 import { supabase } from '../../lib/supabase';
 
 function pickProfile(raw: any) {
@@ -95,13 +95,7 @@ export default function ChatInboxScreen() {
                 projectUuid: m.project_id,
                 name,
                 role: "Projet d'équipe",
-                initials:
-                  name
-                    .split(' ')
-                    .map((n: string) => n[0])
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase() || 'PR',
+                initials: getInitials(name) || 'PR',
                 avatarUrl: null,
                 lastMessage: `${senderName}: ${m.text}`,
                 time: formatRelativeTime(m.created_at),
@@ -128,20 +122,8 @@ export default function ChatInboxScreen() {
               convMap.set(otherId, {
                 id: otherId,
                 name,
-                role:
-                  otherUser.role === 'product_creator'
-                    ? 'Product Owner'
-                    : otherUser.role
-                      ? String(otherUser.role).charAt(0).toUpperCase() +
-                        String(otherUser.role).slice(1)
-                      : 'Membre',
-                initials:
-                  name
-                    .split(' ')
-                    .map((n: string) => n[0])
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase() || 'T',
+                role: formatRoleLabel(otherUser.role),
+                initials: getInitials(name),
                 avatarUrl: otherUser.avatar_url || null,
                 lastMessage: m.text,
                 time: formatRelativeTime(m.created_at),
@@ -198,19 +180,8 @@ export default function ChatInboxScreen() {
                 return {
                   id: p.id,
                   name,
-                  role:
-                    p.role === 'product_creator'
-                      ? 'Product Owner'
-                      : p.role
-                        ? String(p.role).charAt(0).toUpperCase() + String(p.role).slice(1)
-                        : 'Membre',
-                  initials:
-                    name
-                      .split(' ')
-                      .map((n: string) => n[0])
-                      .join('')
-                      .slice(0, 2)
-                      .toUpperCase() || 'T',
+                  role: formatRoleLabel(p.role),
+                  initials: getInitials(name),
                   avatarUrl: p.avatar_url || null,
                 };
               })
@@ -232,23 +203,17 @@ export default function ChatInboxScreen() {
     }, [fetchConversations, ready])
   );
 
-  if (!ready) {
-    return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
-        <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
-          Connexion…
-        </Text>
-      </View>
-    );
-  }
-
+  // Realtime inbox — toujours déclaré avant tout return (rules of hooks)
   useEffect(() => {
-    let channel: any = null;
+    if (!ready) return;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
     (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || cancelled) return;
       channel = supabase
         .channel(`inbox-rt-${user.id}`)
         .on(
@@ -258,10 +223,12 @@ export default function ChatInboxScreen() {
         )
         .subscribe();
     })();
+
     return () => {
-      if (channel) supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) void supabase.removeChannel(channel);
     };
-  }, [fetchConversations]);
+  }, [fetchConversations, ready]);
 
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -282,36 +249,45 @@ export default function ChatInboxScreen() {
     );
   }, [suggestions, search]);
 
+  if (!ready) {
+    return <View className="flex-1" style={{ backgroundColor: colors.bg }} />;
+  }
+
   return (
-    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
+    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1" edges={['top']}>
+      {/* Header clean — icônes nues, pas de pastilles */}
       <View
-        style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }}
-        className="h-14 flex-row items-center justify-between px-6 border-b"
+        style={{
+          borderBottomColor: colors.border + '99',
+          borderBottomWidth: 0.5,
+          height: 48,
+          paddingHorizontal: 8,
+        }}
+        className="flex-row items-center justify-between"
       >
         <Pressable
           onPress={() => router.replace('/(tabs)')}
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="w-9 h-9 rounded-full border items-center justify-center"
+          accessibilityRole="button"
+          accessibilityLabel="Retour"
+          hitSlop={10}
+          className="w-11 h-11 items-center justify-center active:opacity-55"
         >
-          <ArrowLeft size={18} color={colors.text} />
+          <ArrowLeft size={24} color={colors.text} strokeWidth={1.85} />
         </Pressable>
-        <Text style={{ color: colors.text }} className="font-space text-base font-bold">
+        <Text style={{ color: colors.text }} className="font-space text-[17px] font-bold">
           Messagerie
         </Text>
-        <View className="w-9 h-9" />
+        <View className="w-11 h-11" />
       </View>
 
-      <View
-        style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }}
-        className="px-4 pt-3 pb-3 border-b"
-      >
+      <View className="px-4 pt-2 pb-3">
         <View
           style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="flex-row items-center h-11 rounded-xl border px-3 gap-2"
+          className="flex-row items-center h-10 rounded-full border px-3.5 gap-2"
         >
-          <Search size={16} color={colors.textSecondary} />
+          <Search size={16} color={colors.textSecondary} strokeWidth={1.85} />
           <TextInput
-            placeholder="Rechercher une discussion ou un talent…"
+            placeholder="Rechercher…"
             placeholderTextColor={colors.textSecondary}
             value={search}
             onChangeText={setSearch}
@@ -359,27 +335,15 @@ export default function ChatInboxScreen() {
                     className="flex-row items-center justify-between border p-3.5 rounded-2xl active:opacity-95"
                   >
                     <View className="flex-row items-center gap-3 flex-1 pr-3">
-                      <View
-                        style={{
-                          backgroundColor: colors.deep,
-                          borderColor: colors.border,
-                        }}
-                        className="w-12 h-12 rounded-full border items-center justify-center overflow-hidden"
-                      >
-                        {conv.avatarUrl ? (
-                          <Image
-                            source={{ uri: conv.avatarUrl }}
-                            style={{ width: 48, height: 48 }}
-                          />
-                        ) : (
-                          <Text
-                            style={{ color: colors.text }}
-                            className="font-space text-sm font-bold"
-                          >
-                            {conv.initials}
-                          </Text>
-                        )}
-                      </View>
+                      <ProfileAvatar
+                        uri={conv.avatarUrl}
+                        name={conv.name}
+                        initials={conv.initials}
+                        size={48}
+                        bg={colors.deep}
+                        borderColor={colors.border}
+                        textColor={colors.text}
+                      />
                       <View className="flex-1 gap-0.5">
                         <Text
                           style={{ color: colors.text }}
@@ -441,7 +405,7 @@ export default function ChatInboxScreen() {
               <EmptyState
                 icon={MessageCircle}
                 title="Pas encore de messages"
-                description="Contacte un talent depuis Équipes ou un profil pour démarrer une conversation."
+                description="Contacte un talent depuis Talents ou un profil pour démarrer une conversation."
                 actionLabel="Voir la communauté"
                 onAction={() => router.push('/(tabs)/teams')}
               />
@@ -466,27 +430,15 @@ export default function ChatInboxScreen() {
                     className="flex-row items-center justify-between border p-3.5 rounded-2xl active:opacity-95"
                   >
                     <View className="flex-row items-center gap-3">
-                      <View
-                        style={{
-                          backgroundColor: colors.deep,
-                          borderColor: colors.border,
-                        }}
-                        className="w-10 h-10 rounded-full border overflow-hidden items-center justify-center"
-                      >
-                        {sugg.avatarUrl ? (
-                          <Image
-                            source={{ uri: sugg.avatarUrl }}
-                            style={{ width: 40, height: 40 }}
-                          />
-                        ) : (
-                          <Text
-                            style={{ color: colors.text }}
-                            className="font-space text-xs font-bold"
-                          >
-                            {sugg.initials}
-                          </Text>
-                        )}
-                      </View>
+                      <ProfileAvatar
+                        uri={sugg.avatarUrl}
+                        name={sugg.name}
+                        initials={sugg.initials}
+                        size={40}
+                        bg={colors.deep}
+                        borderColor={colors.border}
+                        textColor={colors.text}
+                      />
                       <View>
                         <Text
                           style={{ color: colors.text }}

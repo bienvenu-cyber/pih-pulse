@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react-native';
-import { Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
 
@@ -9,7 +9,7 @@ interface Props {
   disabled?: boolean;
 }
 
-/** Header standard des écrans stack (détail, create, chat…) — 3 thèmes + safe area */
+/** Header stack clean — icône retour nue, pas de pastille bordée. */
 export default function ThemedStackHeader({ title, onBack, disabled }: Props) {
   const { colors } = useThemeFlavor();
   const insets = useSafeAreaInsets();
@@ -17,32 +17,35 @@ export default function ThemedStackHeader({ title, onBack, disabled }: Props) {
   return (
     <View
       style={{
-        backgroundColor: colors.nav,
-        borderBottomColor: colors.border,
+        backgroundColor: colors.bg,
+        borderBottomColor: colors.border + '99',
+        borderBottomWidth: Platform.OS === 'ios' ? 0.33 : 0.5,
         paddingTop: insets.top,
       }}
-      className="border-b"
     >
-      <View className="h-14 flex-row items-center justify-between px-5">
+      <View
+        className="flex-row items-center justify-between"
+        style={{ height: 48, paddingHorizontal: 8 }}
+      >
         <Pressable
           onPress={onBack}
           disabled={disabled}
           accessibilityRole="button"
           accessibilityLabel="Retour"
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="w-9 h-9 rounded-full border items-center justify-center"
+          hitSlop={10}
+          className="w-11 h-11 items-center justify-center active:opacity-55"
         >
-          <ArrowLeft size={18} color={colors.text} />
+          <ArrowLeft size={24} color={colors.text} strokeWidth={1.85} />
         </Pressable>
         <Text
           style={{ color: colors.text }}
-          className="font-space text-base font-bold"
+          className="font-space text-[17px] font-bold flex-1 text-center"
           accessibilityRole="header"
           numberOfLines={1}
         >
           {title}
         </Text>
-        <View className="w-9 h-9" />
+        <View className="w-11 h-11" />
       </View>
     </View>
   );

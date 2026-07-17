@@ -16,6 +16,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ReplySection from '../../components/ReplySection';
 import EmptyState from '../../components/ui/EmptyState';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { joinProject, updateProjectStatus } from '../../lib/hub';
 import {
@@ -276,8 +277,8 @@ export default function ProjectDetailsScreen() {
 
   if (loading) {
     return (
-      <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ScreenSkeleton variant="detail" />
       </View>
     );
   }

@@ -4,7 +4,6 @@ import {
   Camera,
   CheckCircle,
   ChevronRight,
-  CircleDot,
   ExternalLink,
   Link2,
   LogOut,
@@ -35,11 +34,13 @@ import CollapsibleHeader, {
   useCollapsibleHeaderOffset,
   useTabListBottomPadding,
 } from '../../components/CollapsibleHeader';
+import { PresenceDot, ProfileStatusMeta } from '../../components/ProfileStatus';
 import ProfileToggles, {
   isUserOnline,
   type ProfileToggleKey,
   type ProfileToggleState,
 } from '../../components/ProfileToggles';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { tryGrantProfileCompleteBonus } from '../../lib/hub';
 import { getProfileCompleteness, IMPACT_POINTS } from '../../lib/impact';
@@ -357,8 +358,11 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View className="flex-1" style={{ backgroundColor: colors.bg }}>
+        <CollapsibleHeader title="Profil" visible />
+        <View style={{ paddingTop: headerOffset }}>
+          <ScreenSkeleton variant="profile" padded={false} />
+        </View>
       </View>
     );
   }
@@ -509,6 +513,8 @@ export default function ProfileScreen() {
                   </Text>
                 )}
               </View>
+              {/* Présence : point bas-gauche (caméra reste bas-droite) */}
+              <PresenceDot online={onlineSelf} size={14} borderColor={colors.card} />
               <View className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-turmeric items-center justify-center">
                 {avatarBusy ? (
                   <ActivityIndicator size={10} color="#0D0B05" />
@@ -535,35 +541,12 @@ export default function ProfileScreen() {
                   {username}
                 </Text>
               ) : null}
-              <View className="flex-row flex-wrap items-center gap-1.5 mt-1">
-                <View
-                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-                  className="border px-2 py-0.5 rounded-full"
-                >
-                  <Text
-                    style={{ color: colors.textSecondary }}
-                    className="font-inter text-[10px] font-bold uppercase"
-                  >
-                    {roleLabel}
-                  </Text>
-                </View>
-                {available ? (
-                  <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-kaki/15 border border-kaki/30">
-                    <CircleDot size={10} color={colors.kaki} />
-                    <Text style={{ color: colors.kaki }} className="font-inter text-[10px] font-bold">
-                      Dispo
-                    </Text>
-                  </View>
-                ) : null}
-                {onlineSelf ? (
-                  <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-kaki/15 border border-kaki/30">
-                    <View className="w-1.5 h-1.5 rounded-full bg-kaki" />
-                    <Text style={{ color: colors.kaki }} className="font-inter text-[10px] font-bold">
-                      En ligne
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
+              {/* Rôle · Dispo · En ligne — ligne méta fine, plus de chips bordés */}
+              <ProfileStatusMeta
+                roleLabel={roleLabel}
+                available={available}
+                online={onlineSelf}
+              />
             </View>
 
             <Pressable

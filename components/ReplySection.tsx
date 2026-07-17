@@ -21,6 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import ListSkeleton from './ui/ListSkeleton';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
 import { formatRelativeTime } from '../lib/formatTime';
 import {
@@ -337,7 +338,7 @@ export default function ReplySection({ refType, refId, refreshKey = 0 }: Props) 
       ) : null}
 
       {loading ? (
-        <ActivityIndicator color={colors.turmeric} />
+        <ListSkeleton count={3} variant="row" />
       ) : replies.length === 0 ? (
         <Text style={{ color: colors.textSecondary }} className="font-inter text-xs py-1">
           {refType === 'mission'

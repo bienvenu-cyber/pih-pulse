@@ -2,7 +2,6 @@ import { useRouter } from 'expo-router';
 import { Clock, Plus, Search, Target } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -20,6 +19,7 @@ import ReactionBar from '../../components/ReactionBar';
 import ReplyCountBadge from '../../components/ReplyCountBadge';
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
+import LoadMoreFooter from '../../components/ui/LoadMoreFooter';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatDeadlineLabel } from '../../lib/deadline';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
@@ -396,18 +396,10 @@ export default function MissionsScreen() {
           }
           ListHeaderComponent={listHeader}
           ListFooterComponent={
-            loadingMore ? (
-              <View className="py-4 items-center">
-                <ActivityIndicator color={colors.turmeric} />
-              </View>
-            ) : hasMore && missions.length > 0 ? (
-              <Text
-                style={{ color: colors.textSecondary }}
-                className="font-inter text-[10px] text-center py-3"
-              >
-                Fais défiler pour charger plus
-              </Text>
-            ) : null
+            <LoadMoreFooter
+              loading={loadingMore}
+              hasMore={hasMore && missions.length > 0}
+            />
           }
           ListEmptyComponent={
             <EmptyState

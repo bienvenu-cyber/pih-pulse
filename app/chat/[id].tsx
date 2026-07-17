@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { AlertTriangle, ArrowLeft, Check, CheckCheck, CheckCircle, Send } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,8 +14,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { markProjectChatRead } from '../../lib/chatRead';
+import { formatRoleLabel, getInitials } from '../../lib/formatTime';
 import {
   fetchDmMessagesPage,
   fetchProjectMessagesPage,
@@ -23,9 +26,15 @@ import {
 } from '../../lib/messages';
 import { supabase } from '../../lib/supabase';
 
+function paramToString(v: string | string[] | undefined): string {
+  if (Array.isArray(v)) return v[0] ?? '';
+  return typeof v === 'string' ? v : '';
+}
+
 export default function ChatRoomScreen() {
   const { colors } = useThemeFlavor();
-  const { id } = useLocalSearchParams(); // ID of the user we are chatting with
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const chatId = useMemo(() => paramToString(params.id), [params.id]);
   const router = useRouter();
 
   // Custom premium modal alerts
@@ -40,8 +49,18 @@ export default function ChatRoomScreen() {
     setModalType(type);
     setModalVisible(true);
   };
-  
-  const [themProfile, setThemProfile] = useState<any>(null);
+
+  const [themProfile, setThemProfile] = useState<{
+    id?: string;
+    name: string;
+    role: string;
+    initials: string;
+    avatarUrl?: string | null;
+    description?: string;
+    status?: string;
+    creator?: string;
+    expo_push_token?: string | null;
+  } | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
   const [myName, setMyName] = useState('Un collaborateur');
   const [projectTokens, setProjectTokens] = useState<string[]>([]);
@@ -53,15 +72,15 @@ export default function ChatRoomScreen() {
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [memberNames, setMemberNames] = useState<Record<string, string>>({});
   const [infoExpanded, setInfoExpanded] = useState(true);
-  
+
   const scrollViewRef = useRef<ScrollView>(null);
   const stickToBottomRef = useRef(true);
   const loadingOlderRef = useRef(false);
   const hasMoreOlderRef = useRef(false);
   const meIdRef = useRef<string | null>(null);
 
-  const isProjectChat = typeof id === 'string' && id.startsWith('project-');
-  const projectId = isProjectChat ? id.replace('project-', '') : null;
+  const isProjectChat = chatId.startsWith('project-');
+  const projectId = isProjectChat ? chatId.replace(/^project-/, '') : null;
 
   const setHasMoreOlderSafe = (v: boolean) => {
     hasMoreOlderRef.current = v;
@@ -104,29 +123,30 @@ export default function ChatRoomScreen() {
             console.error('Error loading project details:', projError);
             setThemProfile({
               name: 'Projet',
-              role: "Groupe d'Équipe",
+              role: "Projet d'équipe",
               initials: 'PR',
-              description: 'Chargement des détails...',
-              status: 'MVP',
-              creator: 'Inconnu'
+              avatarUrl: null,
+              description: 'Impossible de charger les détails.',
+              status: '—',
+              creator: '—',
             });
           } else {
             const creator = Array.isArray(proj.creator) ? proj.creator[0] : proj.creator;
-            const initials = proj.name
-              .split(' ')
-              .map((n: string) => n[0])
-              .join('')
-              .slice(0, 2)
-              .toUpperCase() || 'PR';
 
             setThemProfile({
               id: proj.id,
               name: proj.name,
-              role: "Projet d'Équipe",
-              initials: initials,
+              role: "Projet d'équipe",
+              initials: getInitials(proj.name) || 'PR',
+              avatarUrl: null,
               description: proj.description || 'Pas de description pour ce projet.',
-              status: proj.status === 'mvp' ? 'MVP' : proj.status === 'prototype' ? 'Prototype' : 'Idée',
-              creator: creator?.full_name || 'Inconnu'
+              status:
+                proj.status === 'mvp'
+                  ? 'MVP'
+                  : proj.status === 'prototype'
+                    ? 'Prototype'
+                    : 'Idée',
+              creator: creator?.full_name || 'Inconnu',
             });
           }
 
@@ -233,44 +253,37 @@ export default function ChatRoomScreen() {
 
           activeChannel = channel;
 
-        } else {
+        } else if (chatId) {
           // Direct 1-to-1 Chat
-          // 2. Fetch other user profile info
           const { data: profile, error: profError } = await supabase
             .from('profiles')
-            .select('*')
-            .eq('id', id)
-            .single();
+            .select('id, full_name, role, avatar_url, expo_push_token')
+            .eq('id', chatId)
+            .maybeSingle();
 
           if (profError || !profile) {
             console.error('Error loading receiver profile:', profError);
             setThemProfile({
-              name: 'Talent Pulse',
-              role: 'Collaborateur',
-              initials: 'TP'
+              name: 'Talent',
+              role: 'Membre PIH',
+              initials: 'T',
+              avatarUrl: null,
             });
           } else {
             const name = profile.full_name || 'Talent';
-            const initials = name
-              .split(' ')
-              .map((n: string) => n[0])
-              .join('')
-              .slice(0, 2)
-              .toUpperCase() || 'T';
-
             setThemProfile({
               id: profile.id,
-              name: name,
-              role: profile.role === 'product_creator' ? 'Product Owner' : 'Développeur',
-              initials: initials,
-              expo_push_token: profile.expo_push_token
+              name,
+              role: formatRoleLabel(profile.role),
+              initials: getInitials(name),
+              avatarUrl: profile.avatar_url || null,
+              expo_push_token: profile.expo_push_token,
             });
           }
 
-          // 3. Fetch message thread history (paginé — derniers N)
           const page = await fetchDmMessagesPage({
             meId: user.id,
-            otherId: String(id),
+            otherId: chatId,
           });
           if (page.error) {
             console.error('Error fetching messages:', page.error);
@@ -279,64 +292,59 @@ export default function ChatRoomScreen() {
             setHasMoreOlderSafe(page.hasMore);
           }
 
-          // Mark unread from them → me (DM — ok full update, indexé)
           await supabase
             .from('messages')
             .update({ is_read: true })
-            .eq('sender_id', id)
+            .eq('sender_id', chatId)
             .eq('receiver_id', user.id)
             .eq('is_read', false)
             .is('project_id', null);
 
-          // 4. Set up realtime listener
           const channel = supabase
-            .channel(`chat-room-${user.id}-${id}`)
+            .channel(`chat-room-${user.id}-${chatId}`)
             .on(
               'postgres_changes',
               {
-                event: '*', // Listen to INSERT (new messages) and UPDATE (read status changes)
+                event: '*',
                 schema: 'public',
-                table: 'messages'
+                table: 'messages',
               },
               (payload) => {
                 if (payload.eventType === 'INSERT') {
-                  const newMsg = payload.new;
-                  
-                  // Only process incoming messages (sent by the other user)
-                  if (newMsg.sender_id === id && newMsg.receiver_id === user.id) {
-                    // Mark incoming message as read immediately in the DB since the chat is open
-                    supabase
+                  const newMsg = payload.new as any;
+                  if (newMsg.sender_id === chatId && newMsg.receiver_id === user.id) {
+                    void supabase
                       .from('messages')
                       .update({ is_read: true })
-                      .eq('id', newMsg.id)
-                      .then(({ error }) => {
-                        if (error) console.error('Failed to mark incoming message as read:', error);
-                      });
+                      .eq('id', newMsg.id);
 
                     stickToBottomRef.current = true;
                     setMessages((prev) => {
-                      // Filter out temporary optimistic messages with matching text to avoid any layout shifts
-                      const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === newMsg.text));
+                      const filtered = prev.filter(
+                        (m) => !(m.id.startsWith('temp-') && m.text === newMsg.text)
+                      );
                       if (filtered.some((m) => m.id === newMsg.id)) return filtered;
                       return [
                         ...filtered,
                         {
                           id: newMsg.id,
                           text: newMsg.text,
-                          is_read: newMsg.is_read,
+                          is_read: true,
                           sender: 'them',
-                          time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                          time: new Date(newMsg.created_at).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          }),
                           created_at: newMsg.created_at,
-                        }
+                        },
                       ];
                     });
                   }
                 } else if (payload.eventType === 'UPDATE') {
-                  const updatedMsg = payload.new;
-                  // If a message in our thread had its read status changed, update it locally in real-time
+                  const updatedMsg = payload.new as any;
                   if (
-                    (updatedMsg.sender_id === user.id && updatedMsg.receiver_id === id) ||
-                    (updatedMsg.sender_id === id && updatedMsg.receiver_id === user.id)
+                    (updatedMsg.sender_id === user.id && updatedMsg.receiver_id === chatId) ||
+                    (updatedMsg.sender_id === chatId && updatedMsg.receiver_id === user.id)
                   ) {
                     setMessages((prev) =>
                       prev.map((m) =>
@@ -350,6 +358,13 @@ export default function ChatRoomScreen() {
             .subscribe();
 
           activeChannel = channel;
+        } else {
+          setThemProfile({
+            name: 'Conversation',
+            role: '',
+            initials: '?',
+            avatarUrl: null,
+          });
         }
 
       } catch (err) {
@@ -366,10 +381,10 @@ export default function ChatRoomScreen() {
 
     return () => {
       if (activeChannel) {
-        supabase.removeChannel(activeChannel);
+        void supabase.removeChannel(activeChannel);
       }
     };
-  }, [id]);
+  }, [chatId]);
 
   const handleBack = () => {
     router.back();
@@ -406,10 +421,10 @@ export default function ChatRoomScreen() {
           });
         }
         setHasMoreOlderSafe(page.hasMore);
-      } else if (id && typeof id === 'string') {
+      } else if (chatId && !isProjectChat) {
         const page = await fetchDmMessagesPage({
           meId: uid,
-          otherId: id,
+          otherId: chatId,
           before: oldest,
         });
         if (page.rows.length) {
@@ -427,7 +442,7 @@ export default function ChatRoomScreen() {
       setLoadingOlder(false);
       loadingOlderRef.current = false;
     }
-  }, [messages, isProjectChat, projectId, id, memberNames]);
+  }, [messages, isProjectChat, projectId, chatId, memberNames]);
 
   const handleChatScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
@@ -451,7 +466,8 @@ export default function ChatRoomScreen() {
     const localMsg = {
       id: tempId,
       text: textToSend,
-      sender: 'me',
+      is_read: false,
+      sender: 'me' as const,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       created_at: nowIso,
     };
@@ -464,15 +480,15 @@ export default function ChatRoomScreen() {
 
     try {
       // Save message in Supabase
-      const insertObj: any = {
+      const insertObj: Record<string, unknown> = {
         sender_id: meId,
-        text: textToSend
+        text: textToSend,
       };
 
       if (isProjectChat) {
         insertObj.project_id = projectId;
       } else {
-        insertObj.receiver_id = id;
+        insertObj.receiver_id = chatId;
       }
 
       const { data, error } = await supabase
@@ -483,6 +499,10 @@ export default function ChatRoomScreen() {
 
       if (error) {
         console.error('Error saving message in Supabase:', error.message);
+        // Retire le message optimiste + restaure le texte
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setInputMessage(textToSend);
+        showModal('Envoi impossible', error.message || 'Réessaie dans un instant.', 'error');
       } else if (data) {
         // Replace temp optimistic message with real message from DB
         setMessages((prev) =>
@@ -532,9 +552,9 @@ export default function ChatRoomScreen() {
               );
             });
           }
-        } else {
+        } else if (chatId) {
           await notifyUser({
-            userId: String(id),
+            userId: chatId,
             actorId: meId,
             type: 'message_received',
             title: myName || 'Nouveau message',
@@ -549,36 +569,79 @@ export default function ChatRoomScreen() {
       }
     } catch (err) {
       console.error('Failed to send message:', err);
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setInputMessage(textToSend);
+      showModal('Envoi impossible', 'Vérifie ta connexion et réessaie.', 'error');
     }
   };
 
   if (loading || !themProfile) {
     return (
-      <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ScreenSkeleton variant="chat" />
       </View>
     );
   }
 
   return (
     <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
-      {/* Header */}
-      <View style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }} className="h-16 flex-row items-center justify-between px-5 border-b">
-        <View className="flex-row items-center gap-3">
-          <Pressable onPress={handleBack} style={{ backgroundColor: colors.card, borderColor: colors.border }} className="w-9 h-9 rounded-full border items-center justify-center">
-            <ArrowLeft size={18} color={colors.text} />
-          </Pressable>
-          <View className="flex-row items-center gap-2">
-            <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="w-10 h-10 rounded-full border items-center justify-center">
-              <Text style={{ color: colors.text }} className="font-space text-xs font-bold">{themProfile.initials}</Text>
-            </View>
-            <View>
-              <Text style={{ color: colors.text }} className="font-space text-sm font-bold">{themProfile.name}</Text>
-              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] uppercase font-semibold">{themProfile.role}</Text>
-            </View>
+      {/* Header thread — style messenger : retour nu + avatar + nom */}
+      <View
+        style={{
+          borderBottomColor: colors.border + '99',
+          borderBottomWidth: 0.5,
+          minHeight: 56,
+          paddingHorizontal: 4,
+        }}
+        className="flex-row items-center gap-1"
+      >
+        <Pressable
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Retour"
+          hitSlop={10}
+          className="w-11 h-11 items-center justify-center active:opacity-55"
+        >
+          <ArrowLeft size={24} color={colors.text} strokeWidth={1.85} />
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            if (!isProjectChat && themProfile.id) {
+              router.push(`/profile/${themProfile.id}` as any);
+            } else if (isProjectChat && projectId) {
+              router.push(`/project/${projectId}` as any);
+            }
+          }}
+          className="flex-1 flex-row items-center gap-2.5 pr-3 active:opacity-80"
+        >
+          <ProfileAvatar
+            uri={themProfile.avatarUrl}
+            name={themProfile.name}
+            initials={themProfile.initials}
+            size={36}
+            bg={colors.card}
+            borderColor={colors.border}
+            textColor={colors.text}
+          />
+          <View className="flex-1">
+            <Text
+              style={{ color: colors.text }}
+              className="font-space text-[15px] font-bold"
+              numberOfLines={1}
+            >
+              {themProfile.name}
+            </Text>
+            {!!themProfile.role && (
+              <Text
+                style={{ color: colors.textSecondary }}
+                className="font-inter text-[11px]"
+                numberOfLines={1}
+              >
+                {themProfile.role}
+              </Text>
+            )}
           </View>
-        </View>
-
+        </Pressable>
       </View>
 
       {/* Pinned Project Briefing (Floating Glassmorphism Card) */}
@@ -656,30 +719,46 @@ export default function ChatRoomScreen() {
             }
           }}
         >
+          {/* Infinite scroll haut : spinner discret uniquement pendant le fetch */}
           {loadingOlder ? (
-            <View className="py-2 items-center">
-              <ActivityIndicator size="small" color={colors.turmeric} />
+            <View className="py-3 items-center">
+              <ActivityIndicator size="small" color={colors.textSecondary} />
             </View>
-          ) : hasMoreOlder ? (
-            <Pressable onPress={() => void loadOlderMessages()} className="py-2 items-center">
-              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
-                Charger les messages précédents
-              </Text>
-            </Pressable>
-          ) : null}
+          ) : (
+            <View className="h-2" />
+          )}
 
           {/* Introduction Card for 1-to-1 chats */}
           {!isProjectChat && (
             <View className="items-center py-6 mb-4 border-b border-malt/30 gap-3">
-              <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="w-14 h-14 rounded-full border items-center justify-center">
-                <Text style={{ color: colors.text }} className="font-space text-lg font-bold">{themProfile.initials}</Text>
-              </View>
+              <ProfileAvatar
+                uri={themProfile.avatarUrl}
+                name={themProfile.name}
+                initials={themProfile.initials}
+                size={56}
+                bg={colors.card}
+                borderColor={colors.border}
+                textColor={colors.text}
+              />
               <View className="items-center gap-1">
-                <Text style={{ color: colors.text }} className="font-space text-sm font-bold text-center">{themProfile.name}</Text>
-                <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] text-center uppercase tracking-wider">{themProfile.role}</Text>
+                <Text style={{ color: colors.text }} className="font-space text-sm font-bold text-center">
+                  {themProfile.name}
+                </Text>
+                {!!themProfile.role && (
+                  <Text
+                    style={{ color: colors.textSecondary }}
+                    className="font-inter text-[10px] text-center uppercase tracking-wider"
+                  >
+                    {themProfile.role}
+                  </Text>
+                )}
               </View>
-              <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px] text-center max-w-[85%] leading-4 mt-1">
-                Début de votre conversation avec {themProfile.name}. Discutez de vos compétences et collaborez sur PIH Pulse.
+              <Text
+                style={{ color: colors.textSecondary }}
+                className="font-inter text-[11px] text-center max-w-[85%] leading-4 mt-1"
+              >
+                Début de votre conversation avec {themProfile.name}. Discutez de vos compétences et
+                collaborez sur PIH Pulse.
               </Text>
             </View>
           )}

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EmptyState from '../../components/ui/EmptyState';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
 import { supabase } from '../../lib/supabase';
@@ -65,8 +66,8 @@ export default function EventDetailScreen() {
 
   if (loading) {
     return (
-      <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ScreenSkeleton variant="detail" />
       </View>
     );
   }

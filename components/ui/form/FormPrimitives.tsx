@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeFlavor } from '../../../hooks/useThemeFlavor';
+import ListSkeleton from '../ListSkeleton';
 
 /* ─── Shell ─────────────────────────────────────────────── */
 
@@ -50,8 +51,14 @@ export function FormScreen({
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View className="flex-1" style={{ backgroundColor: colors.bg, paddingTop: insets.top }}>
+        <View
+          className="px-4 pb-3 pt-2"
+          style={{ borderBottomColor: colors.border, borderBottomWidth: 1 }}
+        >
+          <View className="h-10" />
+        </View>
+        <ListSkeleton variant="form" />
       </View>
     );
   }

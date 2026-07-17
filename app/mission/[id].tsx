@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ReplySection from '../../components/ReplySection';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatDeadlineDate, formatDeadlineLabel } from '../../lib/deadline';
 import {
@@ -191,11 +192,26 @@ export default function MissionDetailsScreen() {
     }
   };
 
-  if (loading || !mission) {
+  if (loading) {
     return (
-      <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ScreenSkeleton variant="detail" />
       </View>
+    );
+  }
+
+  if (!mission) {
+    return (
+      <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
+        <View className="flex-1 items-center justify-center px-8">
+          <Text style={{ color: colors.text }} className="font-space text-base font-bold mb-2">
+            Mission introuvable
+          </Text>
+          <Text style={{ color: colors.textSecondary }} className="font-inter text-xs text-center">
+            Cette mission n’existe pas ou n’est plus disponible.
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
 

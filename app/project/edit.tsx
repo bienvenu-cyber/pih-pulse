@@ -16,6 +16,7 @@ import {
   StepFooter,
 } from '../../components/ui/form/FormPrimitives';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import type { MediaAsset } from '../../lib/media';
 import { supabase } from '../../lib/supabase';
@@ -178,8 +179,8 @@ export default function EditProjectScreen() {
 
   if (!ready || loading) {
     return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
-        <ActivityIndicator color={colors.turmeric} />
+      <View className="flex-1" style={{ backgroundColor: colors.bg }}>
+        <ScreenSkeleton variant="form" />
       </View>
     );
   }

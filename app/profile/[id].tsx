@@ -3,7 +3,6 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Award,
   CheckCircle,
-  CircleDot,
   ExternalLink,
   Layers,
   Link2,
@@ -21,9 +20,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PresenceDot, ProfileStatusMeta } from '../../components/ProfileStatus';
 import ThemedStackHeader from '../../components/ThemedStackHeader';
-import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { isUserOnline } from '../../components/ProfileToggles';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { sendProjectInvite } from '../../lib/invites';
 import { formatLevelName, getLevelProgress } from '../../lib/reputation';
 import { supabase } from '../../lib/supabase';
@@ -208,8 +209,8 @@ export default function MemberProfileDetailsScreen() {
 
   if (loading) {
     return (
-      <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color={colors.turmeric} />
+      <View style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ScreenSkeleton variant="profile" />
       </View>
     );
   }
@@ -249,21 +250,24 @@ export default function MemberProfileDetailsScreen() {
           className="border rounded-2xl p-4 mb-4 overflow-hidden"
         >
           <View className="flex-row items-start gap-3.5">
-            <View
-              style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-              className="w-[72px] h-[72px] rounded-full border-2 overflow-hidden items-center justify-center"
-            >
-              {talent.avatarUrl ? (
-                <Image
-                  source={{ uri: talent.avatarUrl }}
-                  style={{ width: 72, height: 72 }}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={{ color: colors.text }} className="font-space text-2xl font-bold">
-                  {talent.initials}
-                </Text>
-              )}
+            <View className="relative">
+              <View
+                style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                className="w-[72px] h-[72px] rounded-full border overflow-hidden items-center justify-center"
+              >
+                {talent.avatarUrl ? (
+                  <Image
+                    source={{ uri: talent.avatarUrl }}
+                    style={{ width: 72, height: 72 }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={{ color: colors.text }} className="font-space text-2xl font-bold">
+                    {talent.initials}
+                  </Text>
+                )}
+              </View>
+              <PresenceDot online={talent.online} size={14} borderColor={colors.card} />
             </View>
             <View className="flex-1 min-w-0 gap-0.5">
               <Text
@@ -278,35 +282,11 @@ export default function MemberProfileDetailsScreen() {
                   {talent.username}
                 </Text>
               ) : null}
-              <View className="flex-row flex-wrap items-center gap-1.5 mt-1">
-                <View
-                  style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-                  className="border px-2 py-0.5 rounded-full"
-                >
-                  <Text
-                    style={{ color: colors.textSecondary }}
-                    className="font-inter text-[10px] font-bold uppercase"
-                  >
-                    {talent.role}
-                  </Text>
-                </View>
-                {talent.available ? (
-                  <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-kaki/15 border border-kaki/30">
-                    <CircleDot size={10} color={colors.kaki} />
-                    <Text style={{ color: colors.kaki }} className="font-inter text-[10px] font-bold">
-                      Dispo
-                    </Text>
-                  </View>
-                ) : null}
-                {talent.online ? (
-                  <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-kaki/15 border border-kaki/30">
-                    <View className="w-1.5 h-1.5 rounded-full bg-kaki" />
-                    <Text style={{ color: colors.kaki }} className="font-inter text-[10px] font-bold">
-                      En ligne
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
+              <ProfileStatusMeta
+                roleLabel={talent.role}
+                available={talent.available}
+                online={talent.online}
+              />
             </View>
             <View
               style={{

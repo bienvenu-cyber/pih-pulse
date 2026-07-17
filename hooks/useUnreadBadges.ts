@@ -72,6 +72,7 @@ export function useUnreadBadges(pollMs = 60_000) {
       // Channel messages unique (évite re-on après subscribe)
       const msgTopic = `badge-msgs:${user.id}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const ch = supabase.channel(msgTopic);
+      // DM : filtre receiver_id
       ch.on(
         'postgres_changes',
         {
@@ -91,6 +92,22 @@ export function useUnreadBadges(pollMs = 60_000) {
           filter: `receiver_id=eq.${user.id}`,
         },
         () => void refresh()
+      );
+      // Chat projet : pas de receiver_id — on rafraîchit le badge (RPC curseurs)
+      // sur tout INSERT messages (filtre côté refresh / count head).
+      ch.on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const row = payload.new as { project_id?: string | null; sender_id?: string };
+          if (row?.project_id && row.sender_id !== user.id) {
+            void refresh();
+          }
+        }
       );
       if (cancelled) {
         void supabase.removeChannel(ch);

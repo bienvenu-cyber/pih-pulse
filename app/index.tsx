@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
-import { useThemeFlavor } from '../hooks/useThemeFlavor';
+import { BrandedSplash } from '../components/BrandedSplash';
 import { hasCompletedOnboarding } from '../lib/onboarding';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
@@ -11,17 +11,27 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
  * 1) Session Supabase ? → tabs
  * 2) Sinon onboarding déjà vu ? → login
  * 3) Sinon → onboarding (première ouverture)
+ *
+ * Affiche BrandedSplash (logo + from Beyond) jusqu’à la décision de route.
  */
 export default function EntryPoint() {
-  const { colors } = useThemeFlavor();
   const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
+      // Premier frame JS : on peut retirer le splash natif (logo seul),
+      // le branding « from Beyond » est déjà affiché en JS.
+      SplashScreen.hideAsync().catch(() => {});
+
+      const finish = async (href: string) => {
+        if (cancelled) return;
+        router.replace(href as any);
+      };
+
       if (!isSupabaseConfigured) {
-        router.replace('/config-error');
+        await finish('/config-error');
         return;
       }
 
@@ -33,21 +43,21 @@ export default function EntryPoint() {
         if (cancelled) return;
 
         if (session) {
-          router.replace('/(tabs)');
+          await finish('/(tabs)');
           return;
         }
 
         const seen = await hasCompletedOnboarding();
         if (cancelled) return;
 
-        router.replace(seen ? '/login' : '/onboarding');
+        await finish(seen ? '/login' : '/onboarding');
       } catch {
         if (cancelled) return;
         try {
           const seen = await hasCompletedOnboarding();
-          router.replace(seen ? '/login' : '/onboarding');
+          await finish(seen ? '/login' : '/onboarding');
         } catch {
-          router.replace('/onboarding');
+          await finish('/onboarding');
         }
       }
     })();
@@ -57,12 +67,5 @@ export default function EntryPoint() {
     };
   }, [router]);
 
-  return (
-    <View
-      style={{ backgroundColor: colors.bg }}
-      className="flex-1 items-center justify-center"
-    >
-      <ActivityIndicator size="large" color={colors.turmeric} />
-    </View>
-  );
+  return <BrandedSplash />;
 }

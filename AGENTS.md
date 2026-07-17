@@ -47,20 +47,32 @@ L'application supporte **3 thèmes** sélectionnables par l'utilisateur dans le 
 
 ## 🧭 Navigation & Layout de l'En-tête
 
-* **Bottom Tab Navigation (5 onglets) :**
+* **Bottom Tab Navigation (5 onglets) — icônes seules** (`tabBarShowLabel: false`) :
+  Labels accessibles via `tabBarAccessibilityLabel` uniquement (pas de texte sous les icônes).
   1. **Feed** (icône `Home`)
   2. **Projets** (icône `Layers` — attention, ne pas utiliser d'icône Rocket)
   3. **Missions** (icône `Target`)
   4. **Talents** (icône `Users` — annuaire communauté, ex-« Équipes »)
   5. **Profil** (icône `User`)
+  - Actif : turmeric · Inactif : sable/crème secondaire · Taille icône 22.
 
-* **Header (En-tête de l'application) :**
-  - Titre à gauche : **PIH Pulse** (ou titre de l'écran).
-  - Actions à droite (flex, gap: 8px) :
-    1. Icône Notifications (cloche : `Bell`) à gauche.
-    2. Icône Messagerie (avion en papier : `Send`, incliné à 30 degrés pour pointer vers la droite) à droite.
+* **Header (En-tête de l'application) — style social clean (Instagram-like) :**
+  - Titre / wordmark à gauche : **PIH Pulse** (ou titre de l’écran) ; feed peut utiliser `+` création.
+  - Actions à droite : **icônes nues** (pas de pastille/cercle bordé, pas de fond carte).
+    1. Notifications — `Bell` (24, stroke ~1.85).
+    2. Messagerie — `MessageCircle` (bulle, **pas** `Send` / avion).
+  - Badges non-lus : petite pastille turmeric sur l’icône uniquement.
+  - Header flottant léger (`headerBg` semi-transparent) + hairline, hauteur contenu ~48.
 
 ---
+
+## 🎬 Splash screen
+
+* Spec complète : [docs/SPLASH.md](docs/SPLASH.md).
+* Natif : `icon.png` centré + fond clair/sombre système (`app.json` / expo-splash-screen).
+* JS : `BrandedSplash` = logo centré + **from Beyond** en bas.
+* Après regen d’icônes : `python3 scripts/generate-splash.py` puis **rebuild EAS**.
+* Pas de fichier `splash-icon.png` séparé — uniquement `icon.png` + maquettes `splash-dark.png` / `splash-light.png`.
 
 ## 📖 Références de Conception
 
