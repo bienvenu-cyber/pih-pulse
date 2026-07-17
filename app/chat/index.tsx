@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { countProjectChatUnreadBatch } from '../../lib/chatRead';
 import { formatRelativeTime } from '../../lib/formatTime';
 import { supabase } from '../../lib/supabase';
@@ -25,6 +26,7 @@ function pickProfile(raw: any) {
 
 export default function ChatInboxScreen() {
   const { colors } = useThemeFlavor();
+  const { ready, userId: authUid } = useRequireAuth();
   const [conversations, setConversations] = useState<any[]>([]);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,9 +227,20 @@ export default function ChatInboxScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (!ready) return;
       fetchConversations('init');
-    }, [fetchConversations])
+    }, [fetchConversations, ready])
   );
+
+  if (!ready) {
+    return (
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
+        <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+          Connexion…
+        </Text>
+      </View>
+    );
+  }
 
   useEffect(() => {
     let channel: any = null;

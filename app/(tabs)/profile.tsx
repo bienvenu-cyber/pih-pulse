@@ -25,6 +25,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   Text,
@@ -85,6 +86,7 @@ export default function ProfileScreen() {
   });
   const [myProjects, setMyProjects] = useState<MyProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [toggleBusy, setToggleBusy] = useState<ProfileToggleKey | null>(null);
   /** Source de vérité UI des contrôles (indépendante des colonnes DB manquantes) */
@@ -222,8 +224,14 @@ export default function ProfileScreen() {
       console.error(e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [router]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchProfileData();
+  }, [fetchProfileData]);
 
   useFocusEffect(
     useCallback(() => {
@@ -448,6 +456,14 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={colors.turmeric}
+            colors={[colors.turmeric]}
+          />
+        }
       >
         {/* CTA profil incomplet — compact */}
         {showCompleteCta ? (

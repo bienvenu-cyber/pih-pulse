@@ -31,6 +31,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRequireAuth } from '../hooks/useRequireAuth';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
 import {
   fetchNotifications,
@@ -89,6 +90,7 @@ const COLOR_BY_TYPE: Record<string, string> = {
 
 export default function NotificationsScreen() {
   const { colors } = useThemeFlavor();
+  const { ready, userId: authUid } = useRequireAuth();
   const [notifications, setNotifications] = useState<ActivityNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -97,7 +99,7 @@ export default function NotificationsScreen() {
 
   const load = useCallback(async (uid?: string) => {
     try {
-      let id = uid;
+      let id = uid || authUid || undefined;
       if (!id) {
         const {
           data: { user },
@@ -108,6 +110,8 @@ export default function NotificationsScreen() {
         }
         id = user.id;
         setUserId(user.id);
+      } else {
+        setUserId(id);
       }
 
       const list = await fetchNotifications(id, { limit: 60 });
@@ -177,7 +181,7 @@ export default function NotificationsScreen() {
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   };
 
-  if (loading) {
+  if (!ready || loading) {
     return (
       <View style={{ backgroundColor: colors.bg }} className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color={colors.turmeric} />

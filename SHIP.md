@@ -2,9 +2,9 @@
 
 Checklist pour passer du MVP à un usage réel (TestFlight / Play Internal → stores).
 
-Dernière mise à jour : fin session 2026-07-16 (post sprints A–E + notifs + seeds).
+Dernière mise à jour : 2026-07-17 (scale S0–S3 + code ship-ready hors comptes stores).
 
-**Contexte :** le code app est prêt pour un usage hub interne. Ce fichier = checklist **hors code** pour sortir en preview / store.
+**Contexte :** code hub + scale **DONE**. Ce fichier = ce qui reste **quand tu as les comptes stores** + smoke device.
 
 ---
 
@@ -98,14 +98,16 @@ npx eas submit --profile production --platform ios
 
 ### Privacy policy URL
 
-- [ ] Page web publiée (site PIH ou Notion public)  
-- [ ] Lien dans stores + éventuellement in-app  
+- [x] **In-app** : route `/legal/privacy` (Profil → Préférences → Confidentialité)  
+- [ ] Page web publique (Notion/site) pour les formulaires stores  
+- [ ] Lien stores → URL web  
 
 ## 7. Versioning
 
-- `app.json` → `version` (marketing, ex. `1.0.0`)  
-- EAS `autoIncrement` → build number  
-- [ ] Changelog release notes FR  
+- `app.json` → `version` **1.0.0**  
+- EAS `autoIncrement` → build number (production)  
+- [x] Changelog : `CHANGELOG.md`  
+- [ ] Release notes stores FR (copier depuis CHANGELOG)  
 
 ## 8. Post-ship monitoring
 
@@ -115,17 +117,16 @@ npx eas submit --profile production --platform ios
 
 ---
 
-## État code (fin session 2026-07-16)
+## État code (2026-07-17)
 
 | Zone | Statut |
 |------|--------|
-| Hub features (feed, projets, missions, posts, chat) | **DONE** V1 |
-| Safe areas / FlatList / not-found | OK |
-| Posts caption unique + media cover/lightbox | OK |
-| Notifs réactions + chat + realtime badges | OK |
-| QR local / Apple Sign-In code | OK (config store Apple requise) |
-| Seeds posts | `supabase_seeds_posts.sql` (UUID `f…`) |
-| i18n | Scaffold FR/EN |
-| **Reste pour ship** | EAS + smoke device + privacy + comptes stores |
+| Hub + scale S0–S3 | **DONE** (prod SQL + edge + git) |
+| AuthGuard tabs / chat / notifs | **DONE** |
+| Édition projet lead | **DONE** |
+| Privacy in-app | **DONE** `/legal/privacy` |
+| Élan UI | **DONE** |
+| **Reste sans comptes stores** | Smoke manuel + éventuellement `eas build --profile preview --platform android` |
+| **Reste avec comptes stores** | Submit iOS/Android, privacy URL web, OAuth Apple store |
 
-Détail backlog : **`AUDIT.md`**.
+Détail : **`AUDIT.md`**, scale : **`SCALE_AUDIT.md`**.

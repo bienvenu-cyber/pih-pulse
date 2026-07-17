@@ -28,6 +28,7 @@ export default function ProfileSecurityScreen() {
   const [busyPass, setBusyPass] = useState(false);
   const [busyDelete, setBusyDelete] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -104,6 +105,31 @@ export default function ProfileSecurityScreen() {
       setError('');
       setMsg('');
       try {
+        const {
+          data: { user: u },
+        } = await supabase.auth.getUser();
+        const providers = (u?.identities || []).map((i) => i.provider);
+        const hasPasswordProvider =
+          providers.includes('email') || providers.length === 0;
+
+        // Re-auth e-mail/mdp uniquement (OAuth = SUPPRIMER suffit)
+        if (hasPasswordProvider) {
+          if (!deletePassword || deletePassword.length < 6) {
+            setError('Confirme avec ton mot de passe pour supprimer le compte.');
+            setBusyDelete(false);
+            return;
+          }
+          const { error: reauthErr } = await supabase.auth.signInWithPassword({
+            email,
+            password: deletePassword,
+          });
+          if (reauthErr) {
+            setError('Mot de passe incorrect. Suppression annulée.');
+            setBusyDelete(false);
+            return;
+          }
+        }
+
         const { error: rpcErr } = await supabase.rpc('delete_own_account');
         if (rpcErr) {
           // Fallback soft : anonymise profil + signOut si RPC absente
@@ -293,12 +319,26 @@ export default function ProfileSecurityScreen() {
               Zone danger
             </Text>
             <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px] leading-5">
-              Supprime ton compte PIH Pulse. Tes données profil sont anonymisées. Tape{' '}
+              Supprime ton compte PIH Pulse. Tes données profil sont anonymisées. Mot de passe + tape{' '}
               <Text style={{ color: colors.text }} className="font-bold">
                 SUPPRIMER
               </Text>{' '}
               pour confirmer.
             </Text>
+            <View
+              style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+              className="border rounded-xl px-3 h-11 justify-center"
+            >
+              <TextInput
+                value={deletePassword}
+                onChangeText={setDeletePassword}
+                secureTextEntry
+                placeholder="Mot de passe actuel"
+                placeholderTextColor={colors.textSecondary}
+                style={{ color: colors.text }}
+                className="font-inter text-sm h-full"
+              />
+            </View>
             <View
               style={{ backgroundColor: colors.deep, borderColor: colors.border }}
               className="border rounded-xl px-3 h-11 justify-center"

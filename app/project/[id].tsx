@@ -5,6 +5,7 @@ import {
   CheckCircle,
   Layers,
   MapPin,
+  Pencil,
   Send,
   ShieldCheck,
   Target,
@@ -344,7 +345,21 @@ export default function ProjectDetailsScreen() {
             {project.statusLabel} · {project.membersCount}
           </Text>
         </View>
-        <View className="w-10 h-10" />
+        {meId && project.creatorId === meId ? (
+          <Pressable
+            onPress={() =>
+              router.push({ pathname: '/project/edit', params: { id: project.id } })
+            }
+            accessibilityRole="button"
+            accessibilityLabel="Modifier le projet"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="w-10 h-10 rounded-full border items-center justify-center active:opacity-80"
+          >
+            <Pencil size={16} color={colors.turmeric} />
+          </Pressable>
+        ) : (
+          <View className="w-10 h-10" />
+        )}
       </View>
 
       <ScrollView 

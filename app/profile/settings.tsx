@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Bell, Check, Globe } from 'lucide-react-native';
+import { Bell, Check, FileText, Globe } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -198,6 +198,22 @@ export default function ProfileSettingsScreen() {
             })}
           </View>
         </View>
+
+        <Pressable
+          onPress={() => router.push('/legal/privacy')}
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="border rounded-2xl p-4 flex-row items-center gap-3 active:opacity-90"
+        >
+          <FileText size={16} color={colors.turmeric} />
+          <View className="flex-1">
+            <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+              Confidentialité
+            </Text>
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px]">
+              Politique de données & droits (in-app)
+            </Text>
+          </View>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );

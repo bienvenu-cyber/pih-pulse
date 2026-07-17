@@ -106,6 +106,7 @@ Ce fichier sert de feuille de route pour le développement du projet. Cochez les
 - `[x]` S3 hardening code : hub_feed, award, bulk notifs, archive, k6, docs
 - `[x]` Prod SQL : **`FIX_SCALE_HARDENING.sql`** appliqué
 - `[x]` Commit/push lot scale
-- `[ ]` k6 smoke optionnel + pg_cron vérifié dans Dashboard
-- `[ ]` EAS preview + smoke store (`SHIP.md`)
-- `[ ]` Édition projet lead (backlog P1 optionnel)
+- `[x]` Code ship-ready hors stores : AuthGuard, edit projet, privacy, PTR profil, re-auth delete
+- `[ ]` k6 / pg_cron (ops optionnel)
+- `[ ]` EAS preview quand prêt + smoke device (`SHIP.md`)
+- `[ ]` Comptes Apple / Google stores (hors code)

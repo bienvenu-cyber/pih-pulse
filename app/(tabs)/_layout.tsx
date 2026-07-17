@@ -2,8 +2,9 @@ import * as Notifications from 'expo-notifications';
 import { Tabs, useRouter } from 'expo-router';
 import { Home, Layers, Target, User, Users } from 'lucide-react-native';
 import { useEffect } from 'react';
-import { AppState, Platform, type AppStateStatus } from 'react-native';
+import { ActivityIndicator, AppState, Platform, View, type AppStateStatus } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { registerForPushNotificationsAsync, savePushToken } from '../../lib/notifications';
 import { PRESENCE_HEARTBEAT_MS, touchLastSeen } from '../../lib/presence';
@@ -12,10 +13,12 @@ import { supabase } from '../../lib/supabase';
 export default function TabLayout() {
   const router = useRouter();
   const { colors } = useThemeFlavor();
+  const { ready } = useRequireAuth();
   const insets = useSafeAreaInsets();
   const tabBarHeight = 52 + Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 6);
 
   useEffect(() => {
+    if (!ready) return;
     async function setupNotifications() {
       try {
         const {
@@ -42,9 +45,10 @@ export default function TabLayout() {
     });
 
     return () => subscription.remove();
-  }, [router]);
+  }, [router, ready]);
 
   useEffect(() => {
+    if (!ready) return;
     let interval: ReturnType<typeof setInterval> | null = null;
 
     const startHeartbeat = () => {
@@ -74,7 +78,15 @@ export default function TabLayout() {
       stopHeartbeat();
       sub.remove();
     };
-  }, []);
+  }, [ready]);
+
+  if (!ready) {
+    return (
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg }}>
+        <ActivityIndicator color={colors.turmeric} />
+      </View>
+    );
+  }
 
   return (
     <Tabs

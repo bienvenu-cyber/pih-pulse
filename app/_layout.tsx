@@ -141,6 +141,8 @@ function RootLayoutNav() {
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="project/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="project/create" options={{ headerShown: false }} />
+        <Stack.Screen name="project/edit" options={{ headerShown: false }} />
+        <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
         <Stack.Screen name="mission/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="mission/create" options={{ headerShown: false }} />
         <Stack.Screen name="event/[id]" options={{ headerShown: false }} />

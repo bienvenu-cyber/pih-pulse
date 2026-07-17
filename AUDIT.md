@@ -121,26 +121,26 @@ Les sprints **A → E** + lots **médias**, **posts caption**, **notifs/chat** e
 
 ## 5. Backlog restant (hors store)
 
-### P1 produit (optionnel avant store)
+### P1 produit
 
-- [ ] Édition projet (lead) : nom, description, skills, media, statut  
-- [ ] AuthGuard global deep links  
-- [ ] Création événements hub  
+- [x] Édition projet (lead) — `app/project/edit.tsx`  
+- [x] AuthGuard — `useRequireAuth` + tabs / chat / notifs  
+- [ ] Création événements hub (hors scope store)  
 - [ ] Vue « Mes équipes » (squads) vs Talents  
 
 ### P2 polish
 
-- [ ] FlatList Missions / Feed  
-- [ ] Pull-to-refresh profil  
+- [x] FlatList Projets / Missions (Feed = ScrollView + pagination)  
+- [x] Pull-to-refresh profil  
 - [ ] Avatars chat + membres projet  
 - [ ] i18n branchée sur plus d’écrans  
-- [ ] Edge Function push (scale 100k)  
+- [x] Edge Function push (`send-push`)  
 
 ### Ops / store → **SHIP.md**
 
-- [ ] Builds EAS preview  
-- [ ] Smoke device réel (auth, push, OAuth, notifs)  
-- [ ] Privacy policy  
+- [ ] Builds EAS preview (compte store non requis pour Android APK internal si Expo OK)  
+- [ ] Smoke device réel  
+- [x] Privacy policy **in-app** (`/legal/privacy`) — URL web stores plus tard  
 - [ ] Apple / Google store accounts  
 
 ---
