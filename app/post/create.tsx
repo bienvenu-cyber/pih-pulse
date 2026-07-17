@@ -111,7 +111,7 @@ export default function CreatePostScreen() {
       loading={authChecking}
       footer={
         <PrimaryButton
-          label={`Publier · +${IMPACT_POINTS.createPost} Impact`}
+          label={`Publier · +${IMPACT_POINTS.createPost} Élan`}
           onPress={handleCreate}
           loading={loading}
           disabled={!canPublish}
@@ -121,7 +121,7 @@ export default function CreatePostScreen() {
     >
       <ImpactBanner
         points={IMPACT_POINTS.createPost}
-        label="Texte, photo ou les deux — le hub écoute. +Impact à la publication."
+        label="Texte, photo ou les deux — le hub écoute. +Élan à la publication."
       />
 
       {errorMsg ? <FormAlert message={errorMsg} /> : null}

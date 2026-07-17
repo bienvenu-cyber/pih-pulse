@@ -98,5 +98,14 @@ Ce fichier sert de feuille de route pour le développement du projet. Cochez les
 - `[x]` MediaCarousel cover / thumbs vidéo / lightbox
 - `[x]` Notifs réactions + chat projet + realtime badges
 - `[x]` Seeds posts (`supabase_seeds_posts.sql`)
+- `[x]` S0 scale : pagination Projets/Missions/Feed + indexes + boosts par page
+- `[x]` S0.4 messages paginés + S0.5 scripts prod + S1 award_points RPC + Edge send-push
+- `[x]` Prod ops : `FIX_PROD_SCALE` + `FIX_AWARD_POINTS` + Edge `send-push` déployée
+- `[x]` S1 read model chat + compteurs denorm + UI Élan (code)
+- `[x]` Prod SQL : `FIX_CHAT_READ_AND_COUNTS.sql` appliqué
+- `[x]` S3 hardening code : hub_feed, award, bulk notifs, archive, k6, docs
+- `[x]` Prod SQL : **`FIX_SCALE_HARDENING.sql`** appliqué
+- `[x]` Commit/push lot scale
+- `[ ]` k6 smoke optionnel + pg_cron vérifié dans Dashboard
 - `[ ]` EAS preview + smoke store (`SHIP.md`)
 - `[ ]` Édition projet lead (backlog P1 optionnel)

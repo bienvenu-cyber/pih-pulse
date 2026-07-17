@@ -225,7 +225,7 @@ export default function TeamsScreen() {
                   <View className="flex-row items-center gap-1">
                     <Award size={12} color={colors.textSecondary} />
                     <Text style={{ color: colors.text }} className="font-inter text-xs font-semibold">
-                      {talent.points} Impact
+                      {talent.points} Élan
                     </Text>
                     {talent.levelLabel ? (
                       <Text

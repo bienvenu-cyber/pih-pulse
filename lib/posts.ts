@@ -3,6 +3,7 @@
  */
 import { IMPACT_POINTS } from './impact';
 import type { MediaAsset } from './media';
+import { awardPoints } from './reputation';
 import { supabase } from './supabase';
 
 export interface CreatePostInput {
@@ -62,11 +63,12 @@ export async function createHubPost(
 
   if (error) return { error: error.message };
 
-  await supabase.from('reputation_logs').insert({
-    user_id: input.authorId,
-    points_changed: IMPACT_POINTS.createPost,
-    reason: 'Publication d’un post hub',
-  });
+  await awardPoints(
+    input.authorId,
+    IMPACT_POINTS.createPost,
+    'Publication d’un post hub',
+    `create_post:${data.id}`
+  );
 
   return { id: data.id };
 }
@@ -74,8 +76,15 @@ export async function createHubPost(
 /**
  * Select résilient : si la table posts / jointures absentes,
  * on renvoie [] sans casser le feed.
+ * `offset` + `limit` = pagination serveur (scale S0).
  */
-export async function fetchPostsSafe(limit = 40): Promise<HubPost[]> {
+export async function fetchPostsSafe(
+  limit = 40,
+  offset = 0
+): Promise<HubPost[]> {
+  const from = Math.max(0, offset);
+  const to = from + Math.max(1, limit) - 1;
+
   const full = await supabase
     .from('posts')
     .select(
@@ -86,7 +95,7 @@ export async function fetchPostsSafe(limit = 40): Promise<HubPost[]> {
     `
     )
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .range(from, to);
 
   if (!full.error && full.data) {
     return (full.data as any[]).map((row) => ({
@@ -103,7 +112,7 @@ export async function fetchPostsSafe(limit = 40): Promise<HubPost[]> {
     .from('posts')
     .select('id, author_id, title, body, media, project_id, created_at')
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .range(from, to);
 
   if (basic.error) {
     console.warn('[posts] table unavailable:', basic.error.message);

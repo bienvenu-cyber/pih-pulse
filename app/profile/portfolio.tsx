@@ -83,7 +83,7 @@ export default function ProfilePortfolioScreen() {
         .eq('id', userId);
       if (err) throw err;
       const bonus = await tryGrantProfileCompleteBonus(userId);
-      setMsg(bonus ? 'Portfolio OK · +20 Impact profil complet !' : 'Portfolio enregistré');
+      setMsg(bonus ? 'Portfolio OK · +20 Élan profil complet !' : 'Portfolio enregistré');
       setTimeout(() => router.back(), 700);
     } catch (e: any) {
       setError(e?.message || 'Erreur');

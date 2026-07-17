@@ -1,8 +1,11 @@
 /**
- * Impact PIH Pulse — barème central (source de vérité produit).
+ * Élan PIH Pulse — barème central (source de vérité produit).
  * DB: profiles.reputation_points (solde) + reputation_logs (historique).
- * UI: libellé "Impact".
+ * UI: libellé **Élan** (ex-Impact). Constantes code gardent le préfixe IMPACT_*.
  */
+
+/** Libellé produit unique (karma / points) */
+export const ELAN_LABEL = 'Élan';
 
 export const IMPACT_POINTS = {
   /** Réactions → créateur du projet/mission (1× par user × post × type) */
@@ -95,7 +98,7 @@ function normalizeSkills(raw: unknown): string[] {
   return [];
 }
 
-/** Critères profil complet pour +20 Impact (1×) — source unique */
+/** Critères profil complet pour +20 Élan (1×) — source unique */
 export function getProfileCompleteness(profile: {
   full_name?: string | null;
   bio?: string | null;

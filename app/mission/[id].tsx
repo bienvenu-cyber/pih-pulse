@@ -290,7 +290,7 @@ export default function MissionDetailsScreen() {
               {mission.reward}
             </Text>
             <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
-              Impact récompense
+              Élan récompense
             </Text>
           </View>
           <View
@@ -625,7 +625,7 @@ export default function MissionDetailsScreen() {
                     });
                   },
                   'Mission validée !',
-                  `Contributeur : ${mission.reward} + 20 Impact. Toi (lead) : +15 Impact.`
+                  `Contributeur : ${mission.reward} + 20 Élan. Toi (lead) : +15 Élan.`
                 )
               }
               className="bg-kaki h-14 rounded-2xl flex-row justify-center items-center gap-2"
@@ -685,7 +685,7 @@ export default function MissionDetailsScreen() {
                   });
                 },
                 'Mission validée !',
-                `Contributeur : ${mission.reward} + 20 Impact. Toi (lead) : +15 Impact.`
+                `Contributeur : ${mission.reward} + 20 Élan. Toi (lead) : +15 Élan.`
               )
             }
             className="bg-kaki/90 h-12 rounded-2xl flex-row justify-center items-center gap-2 mt-3"

@@ -195,7 +195,7 @@ export default function ProjectDetailsScreen() {
       showModal(
         accept ? 'Bienvenue !' : 'Invitation refusée',
         accept
-          ? 'Tu as rejoint l’équipe. +20 Impact si applicable.'
+          ? 'Tu as rejoint l’équipe. +20 Élan si applicable.'
           : 'Invitation déclinée.',
         accept ? 'success' : 'info'
       );
@@ -240,7 +240,7 @@ export default function ProjectDetailsScreen() {
       } else {
         showModal(
           'Félicitations !',
-          'Tu as rejoint l’équipe. +20 Impact. Le lead a été notifié.',
+          'Tu as rejoint l’équipe. +20 Élan. Le lead a été notifié.',
           'success'
         );
         fetchProjectDetails();
@@ -622,7 +622,7 @@ export default function ProjectDetailsScreen() {
               <>
                 <ShieldCheck size={18} color="#0D0B05" strokeWidth={2.5} />
                 <Text className="text-malt-deep font-inter-bold text-base font-bold">
-                  Rejoindre · +20 Impact
+                  Rejoindre · +20 Élan
                 </Text>
               </>
             )}

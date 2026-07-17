@@ -221,9 +221,9 @@ drop policy if exists "Reputation logs are viewable by everyone." on public.repu
 create policy "Reputation logs are viewable by everyone." on public.reputation_logs
   for select using (true);
 
-drop policy if exists "Authenticated can insert reputation logs." on public.reputation_logs;
-create policy "Authenticated can insert reputation logs." on public.reputation_logs
-  for insert with check (auth.role() = 'authenticated');
+-- S1 : plus d'INSERT client direct — utiliser RPC award_points (voir migration award_points)
+-- Policy insert volontairement absente pour authenticated.
+-- create policy "Authenticated can insert reputation logs." ... RETIRÉE
 
 -- ────────────────────────────────────────────────────────────
 -- 7. MESSAGES (DM + chat de groupe projet)
@@ -375,12 +375,15 @@ create trigger on_reputation_log_added
   after insert on public.reputation_logs
   for each row execute procedure public.update_profile_reputation();
 
+-- award_points RPC + idempotency : migrations/20260717000001_award_points_rpc.sql
+-- (appliqué aussi via FIX_AWARD_POINTS.sql en prod)
+
 -- ────────────────────────────────────────────────────────────
 -- COMMENTAIRES
 -- ────────────────────────────────────────────────────────────
 comment on table public.reactions is 'Réactions Impact (idea/hot/ship/contribute) sur projets, missions et posts';
 comment on table public.boosts is 'Boosts ⚡ — ranking feed uniquement (0 Impact)';
-comment on table public.reputation_logs is 'Historique des gains de points ; trigger met à jour profiles.reputation_points';
+comment on table public.reputation_logs is 'Historique des gains de points ; trigger met à jour profiles.reputation_points ; écriture via award_points()';
 
 -- ────────────────────────────────────────────────────────────
 -- 11. ACTIVITY NOTIFICATIONS (in-app + deep links)
@@ -435,6 +438,26 @@ create table if not exists public.posts (
 
 create index if not exists idx_posts_created on public.posts (created_at desc);
 create index if not exists idx_posts_author on public.posts (author_id);
+
+-- S0 scale — listes / feed / chat (voir migrations/20260717000000_scale_s0_indexes.sql)
+create index if not exists idx_projects_created on public.projects (created_at desc);
+create index if not exists idx_projects_creator on public.projects (creator_id);
+create index if not exists idx_projects_status_created on public.projects (status, created_at desc);
+create index if not exists idx_missions_created on public.missions (created_at desc);
+create index if not exists idx_missions_status_created on public.missions (status, created_at desc);
+create index if not exists idx_missions_project on public.missions (project_id);
+create index if not exists idx_project_members_user on public.project_members (user_id);
+create index if not exists idx_project_members_project on public.project_members (project_id);
+create index if not exists idx_messages_project_created
+  on public.messages (project_id, created_at desc) where project_id is not null;
+create index if not exists idx_messages_dm_created
+  on public.messages (receiver_id, created_at desc) where project_id is null;
+create index if not exists idx_messages_sender_receiver
+  on public.messages (sender_id, receiver_id, created_at desc) where project_id is null;
+create index if not exists idx_reputation_logs_user_created
+  on public.reputation_logs (user_id, created_at desc);
+create index if not exists idx_activity_notifications_user_created
+  on public.activity_notifications (user_id, created_at desc);
 
 alter table public.posts enable row level security;
 

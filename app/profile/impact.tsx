@@ -97,7 +97,7 @@ export default function ImpactHistoryScreen() {
         </Pressable>
         <View className="flex-1 items-center">
           <Text style={{ color: colors.text }} className="font-space text-base font-bold">
-            Historique Impact
+            Historique Élan
           </Text>
         </View>
         <View className="w-10" />
@@ -197,7 +197,7 @@ export default function ImpactHistoryScreen() {
                     {current ? ' · actuel' : ''}
                   </Text>
                   <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
-                    {range} Impact
+                    {range} Élan
                   </Text>
                 </View>
                 <Text
@@ -230,7 +230,7 @@ export default function ImpactHistoryScreen() {
               style={{ color: colors.textSecondary }}
               className="font-inter text-xs text-center leading-5"
             >
-              Publie un post, rejoins un projet ou complète ton profil pour gagner de l’Impact.
+              Publie un post, rejoins un projet ou complète ton profil pour gagner de l’Élan.
             </Text>
           </View>
         ) : (
@@ -258,7 +258,7 @@ export default function ImpactHistoryScreen() {
                 </View>
                 <View className="flex-1 gap-0.5">
                   <Text style={{ color: colors.text }} className="font-inter text-[13px] font-semibold leading-5">
-                    {log.reason || 'Mouvement Impact'}
+                    {log.reason || 'Mouvement Élan'}
                   </Text>
                   <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px]">
                     {formatRelativeTime(new Date(log.created_at).getTime())}

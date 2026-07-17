@@ -191,7 +191,7 @@ export default function CreateProjectScreen() {
         if (memberError) {
           console.error('Founder member:', memberError.message);
         }
-        await grantCreateProjectImpact(user.id, name.trim());
+        await grantCreateProjectImpact(user.id, name.trim(), projData.id);
         router.replace(`/project/${projData.id}`);
         return;
       }
@@ -227,7 +227,7 @@ export default function CreateProjectScreen() {
     >
       <ImpactBanner
         points={IMPACT_POINTS.createProject}
-        label="Créer un projet crédite +25 Impact. Tu deviens Founder & Lead automatiquement."
+        label="Créer un projet crédite +25 Élan. Tu deviens Founder & Lead automatiquement."
       />
 
       {errorMsg ? <FormAlert message={errorMsg} /> : null}

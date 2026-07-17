@@ -1,7 +1,10 @@
 /**
- * Système de réputation PIH Pulse — un seul axe : le niveau (points).
+ * Système de réputation PIH Pulse — un seul axe : le niveau (points / Élan).
  * Affiché comme un badge compact sur la carte profil (pas de grille d'exploits).
+ *
+ * S1 : crédits via RPC `award_points` (pas d’INSERT direct client).
  */
+import { supabase } from './supabase';
 
 export type LevelId = 1 | 2 | 3 | 4 | 5;
 
@@ -87,4 +90,85 @@ export function formatLevelBadge(level: ReputationLevel): string {
 /** Libellé sans emoji : "Starter" (profil stamp, UI premium) */
 export function formatLevelName(level: ReputationLevel): string {
   return level.name;
+}
+
+export type AwardPointsResult = {
+  id?: string | null;
+  error?: string;
+  /** true si fallback insert (RPC pas encore déployée) */
+  viaFallback?: boolean;
+};
+
+/**
+ * Crédite des points (Élan) via RPC security definer.
+ * @param idempotencyKey — **requis** après hardening (ex. reaction:uid:ref:type)
+ */
+export async function awardPoints(
+  userId: string,
+  points: number,
+  reason: string,
+  idempotencyKey?: string | null
+): Promise<AwardPointsResult> {
+  if (!userId || !points) return { id: null };
+  const reasonSafe = String(reason || 'Action hub').slice(0, 280);
+  const key = (idempotencyKey || '').trim();
+  if (!key) {
+    console.warn('[awardPoints] idempotency key required');
+    return { error: 'idempotency_key_required' };
+  }
+
+  const { data, error } = await supabase.rpc('award_points', {
+    p_user_id: userId,
+    p_points: points,
+    p_reason: reasonSafe,
+    p_idempotency_key: key,
+  });
+
+  if (!error) {
+    return { id: data as string };
+  }
+
+  const msg = error.message || '';
+  const missingRpc =
+    error.code === 'PGRST202' ||
+    /function.*award_points|could not find/i.test(msg);
+
+  // Fallback uniquement si RPC absente (pas si refus catalogue / rate limit)
+  if (missingRpc) {
+    const { data: row, error: insErr } = await supabase
+      .from('reputation_logs')
+      .insert({
+        user_id: userId,
+        points_changed: points,
+        reason: reasonSafe,
+      })
+      .select('id')
+      .single();
+    if (insErr) {
+      console.warn('[awardPoints] fallback insert failed:', insErr.message);
+      return { error: insErr.message };
+    }
+    return { id: row?.id ?? null, viaFallback: true };
+  }
+
+  console.warn('[awardPoints]', msg);
+  return { error: msg };
+}
+
+/** Plusieurs crédits (validation mission multi-logs, etc.) */
+export async function awardPointsMany(
+  awards: {
+    userId: string;
+    points: number;
+    reason: string;
+    idempotencyKey?: string | null;
+  }[]
+): Promise<void> {
+  await Promise.all(
+    awards
+      .filter((a) => a.userId && a.points)
+      .map((a) =>
+        awardPoints(a.userId, a.points, a.reason, a.idempotencyKey)
+      )
+  );
 }

@@ -1,10 +1,27 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { AlertTriangle, ArrowLeft, Check, CheckCheck, CheckCircle, Send } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../../lib/supabase';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { markProjectChatRead } from '../../lib/chatRead';
+import {
+  fetchDmMessagesPage,
+  fetchProjectMessagesPage,
+  toUiMessage,
+} from '../../lib/messages';
+import { supabase } from '../../lib/supabase';
 
 export default function ChatRoomScreen() {
   const { colors } = useThemeFlavor();
@@ -32,13 +49,24 @@ export default function ChatRoomScreen() {
   const [messages, setMessages] = useState<any[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [memberNames, setMemberNames] = useState<Record<string, string>>({});
   const [infoExpanded, setInfoExpanded] = useState(true);
   
   const scrollViewRef = useRef<ScrollView>(null);
+  const stickToBottomRef = useRef(true);
+  const loadingOlderRef = useRef(false);
+  const hasMoreOlderRef = useRef(false);
+  const meIdRef = useRef<string | null>(null);
 
   const isProjectChat = typeof id === 'string' && id.startsWith('project-');
   const projectId = isProjectChat ? id.replace('project-', '') : null;
+
+  const setHasMoreOlderSafe = (v: boolean) => {
+    hasMoreOlderRef.current = v;
+    setHasMoreOlder(v);
+  };
 
   useEffect(() => {
     let activeChannel: any = null;
@@ -52,6 +80,7 @@ export default function ChatRoomScreen() {
           return;
         }
         setMeId(user.id);
+        meIdRef.current = user.id;
 
         // Fetch current user full name
         const { data: myProf } = await supabase
@@ -102,13 +131,13 @@ export default function ChatRoomScreen() {
           }
 
           // 2b. Fetch project members to cache their names and tokens
+          const names: Record<string, string> = {};
           const { data: members, error: memError } = await supabase
             .from('project_members')
             .select('user_id, profiles(full_name, expo_push_token)')
             .eq('project_id', projectId);
 
           if (!memError && members) {
-            const names: Record<string, string> = {};
             const tokens: string[] = [];
             const otherIds: string[] = [];
             members.forEach((m: any) => {
@@ -128,37 +157,24 @@ export default function ChatRoomScreen() {
             setProjectMemberIds(otherIds);
           }
 
-          // 3. Fetch project message history
-          const { data: msgs, error: msgsError } = await supabase
-            .from('messages')
-            .select('*, sender:profiles!sender_id(id, full_name)')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: true });
-
-          if (msgsError) {
-            console.error('Error fetching project messages:', msgsError);
-          } else if (msgs) {
-            const formatted = msgs.map((m: any) => {
-              const sender = Array.isArray(m.sender) ? m.sender[0] : m.sender;
-              return {
-                id: m.id,
-                text: m.text,
-                is_read: m.is_read,
-                sender: m.sender_id === user.id ? 'me' : 'them',
-                senderName: sender?.full_name || 'Collaborateur',
-                time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              };
-            });
-            setMessages(formatted);
+          // 3. Fetch project message history (paginé — derniers N)
+          const page = await fetchProjectMessagesPage({ projectId });
+          if (page.error) {
+            console.error('Error fetching project messages:', page.error);
+          } else {
+            setMessages(
+              page.rows.map((m) =>
+                toUiMessage(m, user.id, {
+                  senderName:
+                    m.sender?.full_name || names[m.sender_id] || 'Collaborateur',
+                })
+              )
+            );
+            setHasMoreOlderSafe(page.hasMore);
           }
 
-          // Marquer les messages projet des autres comme lus (compteur inbox)
-          await supabase
-            .from('messages')
-            .update({ is_read: true })
-            .eq('project_id', projectId)
-            .neq('sender_id', user.id)
-            .eq('is_read', false);
+          // Read model S1 : curseur user×projet (pas is_read partagé)
+          await markProjectChatRead(projectId);
 
           // 4. Set up project realtime listener
           const channel = supabase
@@ -177,11 +193,8 @@ export default function ChatRoomScreen() {
                   
                   // Only process incoming messages
                   if (newMsg.sender_id !== user.id) {
-                    // Marquer lu immédiatement (chat ouvert)
-                    void supabase
-                      .from('messages')
-                      .update({ is_read: true })
-                      .eq('id', newMsg.id);
+                    // Curseur lecture projet (chat ouvert)
+                    void markProjectChatRead(projectId);
 
                     // Resolve sender name (from cache or quick query)
                     let sName = memberNames[newMsg.sender_id];
@@ -195,6 +208,7 @@ export default function ChatRoomScreen() {
                       setMemberNames(prev => ({ ...prev, [newMsg.sender_id]: sName }));
                     }
 
+                    stickToBottomRef.current = true;
                     setMessages((prev) => {
                       const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === newMsg.text));
                       if (filtered.some((m) => m.id === newMsg.id)) return filtered;
@@ -206,7 +220,8 @@ export default function ChatRoomScreen() {
                           is_read: newMsg.is_read,
                           sender: 'them',
                           senderName: sName,
-                          time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                          created_at: newMsg.created_at,
                         }
                       ];
                     });
@@ -252,33 +267,26 @@ export default function ChatRoomScreen() {
             });
           }
 
-          // 3. Fetch message thread history
-          const { data: msgs, error: msgsError } = await supabase
-            .from('messages')
-            .select('*')
-            .or(`and(sender_id.eq.${user.id},receiver_id.eq.${id}),and(sender_id.eq.${id},receiver_id.eq.${user.id})`)
-            .order('created_at', { ascending: true });
-
-          if (msgsError) {
-            console.error('Error fetching messages:', msgsError);
-          } else if (msgs) {
-            const formatted = msgs.map((m: any) => ({
-              id: m.id,
-              text: m.text,
-              is_read: m.is_read,
-              sender: m.sender_id === user.id ? 'me' : 'them',
-              time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }));
-            setMessages(formatted);
+          // 3. Fetch message thread history (paginé — derniers N)
+          const page = await fetchDmMessagesPage({
+            meId: user.id,
+            otherId: String(id),
+          });
+          if (page.error) {
+            console.error('Error fetching messages:', page.error);
+          } else {
+            setMessages(page.rows.map((m) => toUiMessage(m, user.id)));
+            setHasMoreOlderSafe(page.hasMore);
           }
 
-          // Mark all messages from them to me as read in the DB since we just opened this chat
+          // Mark unread from them → me (DM — ok full update, indexé)
           await supabase
             .from('messages')
             .update({ is_read: true })
             .eq('sender_id', id)
             .eq('receiver_id', user.id)
-            .eq('is_read', false);
+            .eq('is_read', false)
+            .is('project_id', null);
 
           // 4. Set up realtime listener
           const channel = supabase
@@ -305,6 +313,7 @@ export default function ChatRoomScreen() {
                         if (error) console.error('Failed to mark incoming message as read:', error);
                       });
 
+                    stickToBottomRef.current = true;
                     setMessages((prev) => {
                       // Filter out temporary optimistic messages with matching text to avoid any layout shifts
                       const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === newMsg.text));
@@ -316,7 +325,8 @@ export default function ChatRoomScreen() {
                           text: newMsg.text,
                           is_read: newMsg.is_read,
                           sender: 'them',
-                          time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                          created_at: newMsg.created_at,
                         }
                       ];
                     });
@@ -365,6 +375,70 @@ export default function ChatRoomScreen() {
     router.back();
   };
 
+  /** Charge les messages plus anciens (scroll haut) — S0.4 */
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMoreOlderRef.current) return;
+    const uid = meIdRef.current;
+    if (!uid || messages.length === 0) return;
+
+    const oldest = messages[0]?.created_at;
+    if (!oldest) return;
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    stickToBottomRef.current = false;
+
+    try {
+      if (isProjectChat && projectId) {
+        const page = await fetchProjectMessagesPage({
+          projectId,
+          before: oldest,
+        });
+        if (page.rows.length) {
+          const ui = page.rows.map((m) =>
+            toUiMessage(m, uid, {
+              senderName: m.sender?.full_name || memberNames[m.sender_id] || 'Collaborateur',
+            })
+          );
+          setMessages((prev) => {
+            const seen = new Set(prev.map((x) => x.id));
+            return [...ui.filter((m) => !seen.has(m.id)), ...prev];
+          });
+        }
+        setHasMoreOlderSafe(page.hasMore);
+      } else if (id && typeof id === 'string') {
+        const page = await fetchDmMessagesPage({
+          meId: uid,
+          otherId: id,
+          before: oldest,
+        });
+        if (page.rows.length) {
+          const ui = page.rows.map((m) => toUiMessage(m, uid));
+          setMessages((prev) => {
+            const seen = new Set(prev.map((x) => x.id));
+            return [...ui.filter((m) => !seen.has(m.id)), ...prev];
+          });
+        }
+        setHasMoreOlderSafe(page.hasMore);
+      }
+    } catch (e) {
+      console.error('[chat] load older', e);
+    } finally {
+      setLoadingOlder(false);
+      loadingOlderRef.current = false;
+    }
+  }, [messages, isProjectChat, projectId, id, memberNames]);
+
+  const handleChatScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const y = contentOffset.y;
+    stickToBottomRef.current =
+      y + layoutMeasurement.height >= contentSize.height - 100;
+    if (y < 72 && hasMoreOlderRef.current && !loadingOlderRef.current) {
+      void loadOlderMessages();
+    }
+  };
+
   const handleSendMessage = async () => {
     if (inputMessage.trim() === '' || !meId) return;
 
@@ -373,13 +447,16 @@ export default function ChatRoomScreen() {
 
     // Optimistic UI update
     const tempId = `temp-${Date.now()}`;
+    const nowIso = new Date().toISOString();
     const localMsg = {
       id: tempId,
       text: textToSend,
       sender: 'me',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      created_at: nowIso,
     };
 
+    stickToBottomRef.current = true;
     setMessages((prev) => [...prev, localMsg]);
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -416,7 +493,8 @@ export default function ChatRoomScreen() {
                   text: data.text,
                   is_read: data.is_read,
                   sender: 'me',
-                  time: new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  time: new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  created_at: data.created_at,
                 }
               : m
           )
@@ -570,8 +648,26 @@ export default function ChatRoomScreen() {
           className="flex-1 px-4 py-4"
           contentContainerStyle={{ gap: 16, paddingBottom: 24 }}
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+          onScroll={handleChatScroll}
+          scrollEventThrottle={16}
+          onContentSizeChange={() => {
+            if (stickToBottomRef.current) {
+              scrollViewRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
         >
+          {loadingOlder ? (
+            <View className="py-2 items-center">
+              <ActivityIndicator size="small" color={colors.turmeric} />
+            </View>
+          ) : hasMoreOlder ? (
+            <Pressable onPress={() => void loadOlderMessages()} className="py-2 items-center">
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
+                Charger les messages précédents
+              </Text>
+            </Pressable>
+          ) : null}
+
           {/* Introduction Card for 1-to-1 chats */}
           {!isProjectChat && (
             <View className="items-center py-6 mb-4 border-b border-malt/30 gap-3">

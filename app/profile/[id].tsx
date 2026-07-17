@@ -327,7 +327,7 @@ export default function MemberProfileDetailsScreen() {
 
         {/* Stats */}
         <View className="flex-row gap-3 mb-4">
-          <StatCard colors={colors} icon={Award} label="Impact" value={String(talent.points)} />
+          <StatCard colors={colors} icon={Award} label="Élan" value={String(talent.points)} />
           <StatCard
             colors={colors}
             icon={Layers}

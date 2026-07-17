@@ -46,3 +46,6 @@ yarn-error.*
 # OAuth credentials (sensitive)
 OAUTH_CONFIG.md
 
+# Supabase CLI local link cache (ne pas versionner)
+supabase/.temp/
+

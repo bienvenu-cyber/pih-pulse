@@ -1,9 +1,10 @@
 /**
  * Boucle hub : candidature → approbation → livrable → validation
- * + progression de statut projet + Impact.
+ * + progression de statut projet + Élan.
  */
 import { notifyUser } from './activity';
 import { IMPACT_POINTS } from './impact';
+import { awardPoints, awardPointsMany } from './reputation';
 import { supabase } from './supabase';
 
 export type MissionStatus = 'open' | 'in_progress' | 'review' | 'completed' | 'cancelled';
@@ -118,11 +119,12 @@ export async function approveApplication(params: {
 
   if (error) return { error: error.message };
 
-  await supabase.from('reputation_logs').insert({
-    user_id: applicantId,
-    points_changed: IMPACT_POINTS.applicationAccepted,
-    reason: `Candidature acceptée : ${missionTitle}`,
-  });
+  await awardPoints(
+    applicantId,
+    IMPACT_POINTS.applicationAccepted,
+    `Candidature acceptée : ${missionTitle}`,
+    `mission_accepted:${missionId}:${applicantId}`
+  );
 
   await notifyUser({
     userId: applicantId,
@@ -237,34 +239,42 @@ export async function validateMission(params: {
   const bonus = IMPACT_POINTS.missionValidationBonus;
   const leadPts = IMPACT_POINTS.leadValidatesMission;
 
-  const logs: { user_id: string; points_changed: number; reason: string }[] = [
+  const awards: {
+    userId: string;
+    points: number;
+    reason: string;
+    idempotencyKey?: string;
+  }[] = [
     {
-      user_id: assigneeId,
-      points_changed: reward,
+      userId: assigneeId,
+      points: reward,
       reason: `Mission validée : ${missionTitle}`,
+      idempotencyKey: `mission_reward:${missionId}:${assigneeId}`,
     },
     {
-      user_id: assigneeId,
-      points_changed: bonus,
+      userId: assigneeId,
+      points: bonus,
       reason: `Bonus validation — ${missionTitle}`,
+      idempotencyKey: `mission_bonus:${missionId}:${assigneeId}`,
     },
   ];
   if (leadId !== assigneeId) {
-    logs.push({
-      user_id: leadId,
-      points_changed: leadPts,
+    awards.push({
+      userId: leadId,
+      points: leadPts,
       reason: `Lead a validé : ${missionTitle}`,
+      idempotencyKey: `mission_lead:${missionId}:${leadId}`,
     });
   }
 
-  await supabase.from('reputation_logs').insert(logs);
+  await awardPointsMany(awards);
 
   await notifyUser({
     userId: assigneeId,
     actorId: leadId,
     type: 'mission_validated',
     title: 'Mission validée ✅',
-    body: `+${reward + bonus} Impact pour « ${missionTitle} ».`,
+    body: `+${reward + bonus} Élan pour « ${missionTitle} ».`,
     route: `/mission/${missionId}`,
     refId: missionId,
     refType: 'mission',
@@ -321,11 +331,12 @@ export async function joinProject(params: {
 
   if (error) return { error: error.message };
 
-  await supabase.from('reputation_logs').insert({
-    user_id: userId,
-    points_changed: IMPACT_POINTS.joinProject,
-    reason: `A rejoint le projet : ${projectName}`,
-  });
+  await awardPoints(
+    userId,
+    IMPACT_POINTS.joinProject,
+    `A rejoint le projet : ${projectName}`,
+    `join_project:${projectId}:${userId}`
+  );
 
   if (creatorId && creatorId !== userId) {
     await notifyUser({
@@ -343,7 +354,7 @@ export async function joinProject(params: {
   return {};
 }
 
-/** Lead change le statut du projet → Impact équipe (1× par statut via project_status_rewards) */
+/** Lead change le statut du projet → Élan équipe (1× par statut via project_status_rewards) */
 export async function updateProjectStatus(params: {
   projectId: string;
   leadId: string;
@@ -391,11 +402,12 @@ export async function updateProjectStatus(params: {
   const memberIds = (members || []).map((m) => m.user_id);
   if (memberIds.length === 0) memberIds.push(leadId);
 
-  await supabase.from('reputation_logs').insert(
+  await awardPointsMany(
     memberIds.map((uid) => ({
-      user_id: uid,
-      points_changed: pts,
-      reason: `Impact projet « ${projectName} » → ${newStatus}`,
+      userId: uid,
+      points: pts,
+      reason: `Élan projet « ${projectName} » → ${newStatus}`,
+      idempotencyKey: `project_status:${projectId}:${newStatus}:${uid}`,
     }))
   );
 
@@ -408,7 +420,7 @@ export async function updateProjectStatus(params: {
           actorId: leadId,
           type: 'project_status',
           title: 'Projet mis à jour',
-          body: `« ${projectName} » est passé en ${newStatus}. +${pts} Impact.`,
+          body: `« ${projectName} » est passé en ${newStatus}. +${pts} Élan.`,
           route: `/project/${projectId}`,
           refId: projectId,
           refType: 'project',
@@ -419,32 +431,36 @@ export async function updateProjectStatus(params: {
   return {};
 }
 
-/** +Impact création projet (1× à la création) */
+/** +Élan création projet (1× à la création) */
 export async function grantCreateProjectImpact(
   userId: string,
-  projectName: string
+  projectName: string,
+  projectId?: string
 ): Promise<void> {
-  await supabase.from('reputation_logs').insert({
-    user_id: userId,
-    points_changed: IMPACT_POINTS.createProject,
-    reason: `Création du projet : ${projectName}`,
-  });
+  await awardPoints(
+    userId,
+    IMPACT_POINTS.createProject,
+    `Création du projet : ${projectName}`,
+    projectId ? `create_project:${projectId}` : undefined
+  );
 }
 
-/** +Impact création mission */
+/** +Élan création mission */
 export async function grantCreateMissionImpact(
   userId: string,
-  missionTitle: string
+  missionTitle: string,
+  missionId?: string
 ): Promise<void> {
-  await supabase.from('reputation_logs').insert({
-    user_id: userId,
-    points_changed: IMPACT_POINTS.createMission,
-    reason: `Création de la mission : ${missionTitle}`,
-  });
+  await awardPoints(
+    userId,
+    IMPACT_POINTS.createMission,
+    `Création de la mission : ${missionTitle}`,
+    missionId ? `create_mission:${missionId}` : undefined
+  );
 }
 
 /**
- * +20 Impact si profil complet (1×).
+ * +20 Élan si profil complet (1×).
  * Ordre : vérif → log points → flag (évite flag sans crédit).
  */
 export async function tryGrantProfileCompleteBonus(userId: string): Promise<boolean> {
@@ -466,13 +482,14 @@ export async function tryGrantProfileCompleteBonus(userId: string): Promise<bool
   if (!isProfileCompleteForBonus(profile)) return false;
 
   // Crédit d’abord (trigger met à jour reputation_points)
-  const { error: logErr } = await supabase.from('reputation_logs').insert({
-    user_id: userId,
-    points_changed: IMPACT_POINTS.profileComplete,
-    reason: 'Profil & portfolio complets',
-  });
-  if (logErr) {
-    console.warn('[profile-bonus] reputation_logs:', logErr.message);
+  const awarded = await awardPoints(
+    userId,
+    IMPACT_POINTS.profileComplete,
+    'Profil & portfolio complets',
+    `profile_complete:${userId}`
+  );
+  if (awarded.error) {
+    console.warn('[profile-bonus] award:', awarded.error);
     return false;
   }
 

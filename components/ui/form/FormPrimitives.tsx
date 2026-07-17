@@ -510,6 +510,7 @@ export function ChipSelect({
 
 /* ─── Banners & alerts ──────────────────────────────────── */
 
+/** Banner points — libellé produit **Élan** (alias historique ImpactBanner). */
 export function ImpactBanner({
   points,
   label,
@@ -535,11 +536,14 @@ export function ImpactBanner({
         </Text>
       </View>
       <Text style={{ color: colors.text }} className="font-inter text-[12px] flex-1 leading-5">
-        {label || 'Impact crédité à la publication'}
+        {label || 'Élan crédité à la publication'}
       </Text>
     </View>
   );
 }
+
+/** Alias produit */
+export const ElanBanner = ImpactBanner;
 
 export function FormAlert({
   message,

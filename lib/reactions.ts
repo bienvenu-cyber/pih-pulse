@@ -1,10 +1,11 @@
 /**
- * Réactions Impact + Boost (visibilité feed).
+ * Réactions Élan + Boost (visibilité feed).
  * - idea / hot / ship / contribute → points créateur 1× via reaction_awards
  * - boost → 0 pts, ranking feed uniquement (icône Zap inchangée)
  */
 import { notifyUser } from './activity';
 import { IMPACT_POINTS, type ReactionImpactType } from './impact';
+import { awardPoints } from './reputation';
 import { supabase } from './supabase';
 
 export type ReactionType = ReactionImpactType;
@@ -26,16 +27,14 @@ function routeForRef(refType: RefType, refId: string): string {
   return `/post/${refId}`;
 }
 
-async function awardReputation(userId: string, points: number, reason: string) {
+async function awardReputation(
+  userId: string,
+  points: number,
+  reason: string,
+  idempotencyKey?: string
+) {
   if (points <= 0) return;
-  const { error } = await supabase.from('reputation_logs').insert({
-    user_id: userId,
-    points_changed: points,
-    reason,
-  });
-  if (error) {
-    console.warn('Failed to write reputation log:', error.message);
-  }
+  await awardPoints(userId, points, reason, idempotencyKey);
 }
 
 async function resolveCreator(
@@ -165,49 +164,84 @@ export async function fetchReactions(
   refType: RefType,
   userId: string | null
 ): Promise<ReactionCounts> {
-  const [reactionsRes, boostsRes, userReactionsRes, userBoostRes] = await Promise.all([
-    supabase.from('reactions').select('type').eq('ref_id', refId).eq('ref_type', refType),
-    supabase
-      .from('boosts')
-      .select('id', { count: 'exact', head: true })
-      .eq('ref_id', refId)
-      .eq('ref_type', refType),
-    userId
-      ? supabase
-          .from('reactions')
-          .select('type')
-          .eq('ref_id', refId)
-          .eq('ref_type', refType)
-          .eq('user_id', userId)
-      : Promise.resolve({ data: [] as { type: string }[] }),
-    userId
-      ? supabase
-          .from('boosts')
-          .select('id')
-          .eq('ref_id', refId)
-          .eq('ref_type', refType)
-          .eq('user_id', userId)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+  // Préférer denorm + état user
+  const { data: eng } = await supabase
+    .from('engagement_counts')
+    .select(
+      'reaction_hot, reaction_idea, reaction_ship, reaction_contribute, boosts'
+    )
+    .eq('ref_id', refId)
+    .eq('ref_type', refType)
+    .maybeSingle();
 
-  const all = reactionsRes.data || [];
+  const [userReactionsRes, userBoostRes, fallbackReactions, fallbackBoosts] =
+    await Promise.all([
+      userId
+        ? supabase
+            .from('reactions')
+            .select('type')
+            .eq('ref_id', refId)
+            .eq('ref_type', refType)
+            .eq('user_id', userId)
+        : Promise.resolve({ data: [] as { type: string }[] }),
+      userId
+        ? supabase
+            .from('boosts')
+            .select('id')
+            .eq('ref_id', refId)
+            .eq('ref_type', refType)
+            .eq('user_id', userId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      eng
+        ? Promise.resolve({ data: null as any })
+        : supabase
+            .from('reactions')
+            .select('type')
+            .eq('ref_id', refId)
+            .eq('ref_type', refType),
+      eng
+        ? Promise.resolve({ count: null as number | null })
+        : supabase
+            .from('boosts')
+            .select('id', { count: 'exact', head: true })
+            .eq('ref_id', refId)
+            .eq('ref_type', refType),
+    ]);
+
+  if (eng) {
+    return {
+      hot: eng.reaction_hot || 0,
+      idea: eng.reaction_idea || 0,
+      ship: eng.reaction_ship || 0,
+      contribute: eng.reaction_contribute || 0,
+      boosts: eng.boosts || 0,
+      userReactions: (userReactionsRes.data || []).map(
+        (r: any) => r.type as ReactionType
+      ),
+      userBoosted: !!(userBoostRes as any).data,
+    };
+  }
+
+  const all = (fallbackReactions as any).data || [];
   const count = (t: string) => all.filter((r: any) => r.type === t).length;
-
   return {
     hot: count('hot'),
     idea: count('idea'),
     ship: count('ship'),
     contribute: count('contribute'),
-    boosts: boostsRes.count ?? 0,
-    userReactions: (userReactionsRes.data || []).map((r: any) => r.type as ReactionType),
+    boosts: (fallbackBoosts as any).count ?? 0,
+    userReactions: (userReactionsRes.data || []).map(
+      (r: any) => r.type as ReactionType
+    ),
     userBoosted: !!(userBoostRes as any).data,
   };
 }
 
 /**
  * Batch réactions pour listes (Feed / Projets / Missions).
- * 2 requêtes au lieu de 4×N.
+ * S1 : compteurs via engagement_counts (dénormalisés) + état user en 2 req légères.
+ * Fallback : agrégat rows reactions/boosts si table absente.
  */
 export async function fetchReactionsBatch(
   refs: { refId: string; refType: RefType }[],
@@ -224,38 +258,112 @@ export async function fetchReactionsBatch(
   });
   if (unique.size === 0) return map;
 
-  const ids = Array.from(new Set(Array.from(unique.values()).map((r) => r.refId)));
+  const allIds = Array.from(
+    new Set(Array.from(unique.values()).map((r) => r.refId))
+  );
+  const ids = allIds.length > 200 ? allIds.slice(0, 200) : allIds;
+  if (allIds.length > 200) {
+    console.warn('[reactions] batch capped at 200 refs');
+  }
 
-  const [{ data: reactions }, { data: boosts }] = await Promise.all([
-    supabase
-      .from('reactions')
-      .select('ref_id, ref_type, type, user_id')
-      .in('ref_id', ids),
-    supabase.from('boosts').select('ref_id, ref_type, user_id').in('ref_id', ids),
-  ]);
+  // 1) Compteurs dénormalisés (scale)
+  const { data: counts, error: countsErr } = await supabase
+    .from('engagement_counts')
+    .select(
+      'ref_id, ref_type, reaction_hot, reaction_idea, reaction_ship, reaction_contribute, boosts'
+    )
+    .in('ref_id', ids);
 
-  (reactions || []).forEach((row: any) => {
-    const key = reactionKey(row.ref_type as RefType, row.ref_id);
-    if (!map.has(key)) return;
-    const c = map.get(key)!;
-    if (row.type === 'hot') c.hot += 1;
-    else if (row.type === 'idea') c.idea += 1;
-    else if (row.type === 'ship') c.ship += 1;
-    else if (row.type === 'contribute') c.contribute += 1;
-    if (userId && row.user_id === userId) {
-      if (!c.userReactions.includes(row.type)) {
-        c.userReactions.push(row.type as ReactionType);
+  const usedDenorm = !countsErr && counts;
+  if (usedDenorm) {
+    (counts || []).forEach((row: any) => {
+      const key = reactionKey(row.ref_type as RefType, row.ref_id);
+      if (!map.has(key)) return;
+      const c = map.get(key)!;
+      c.hot = row.reaction_hot || 0;
+      c.idea = row.reaction_idea || 0;
+      c.ship = row.reaction_ship || 0;
+      c.contribute = row.reaction_contribute || 0;
+      c.boosts = row.boosts || 0;
+    });
+  }
+
+  // 2) État user (mes réactions / mon boost) — rows limitées user_id
+  //    + fallback full counts si denorm absente
+  if (userId || !usedDenorm) {
+    const queries: PromiseLike<any>[] = [];
+    if (!usedDenorm) {
+      queries.push(
+        supabase
+          .from('reactions')
+          .select('ref_id, ref_type, type, user_id')
+          .in('ref_id', ids)
+      );
+      queries.push(
+        supabase
+          .from('boosts')
+          .select('ref_id, ref_type, user_id')
+          .in('ref_id', ids)
+      );
+    } else if (userId) {
+      queries.push(
+        supabase
+          .from('reactions')
+          .select('ref_id, ref_type, type, user_id')
+          .in('ref_id', ids)
+          .eq('user_id', userId)
+      );
+      queries.push(
+        supabase
+          .from('boosts')
+          .select('ref_id, ref_type, user_id')
+          .in('ref_id', ids)
+          .eq('user_id', userId)
+      );
+    }
+
+    if (queries.length) {
+      const [reactionsRes, boostsRes] = await Promise.all(queries);
+      const reactions = reactionsRes?.data || [];
+      const boosts = boostsRes?.data || [];
+
+      if (!usedDenorm) {
+        reactions.forEach((row: any) => {
+          const key = reactionKey(row.ref_type as RefType, row.ref_id);
+          if (!map.has(key)) return;
+          const c = map.get(key)!;
+          if (row.type === 'hot') c.hot += 1;
+          else if (row.type === 'idea') c.idea += 1;
+          else if (row.type === 'ship') c.ship += 1;
+          else if (row.type === 'contribute') c.contribute += 1;
+          if (userId && row.user_id === userId && !c.userReactions.includes(row.type)) {
+            c.userReactions.push(row.type as ReactionType);
+          }
+        });
+        boosts.forEach((row: any) => {
+          const key = reactionKey(row.ref_type as RefType, row.ref_id);
+          if (!map.has(key)) return;
+          const c = map.get(key)!;
+          c.boosts += 1;
+          if (userId && row.user_id === userId) c.userBoosted = true;
+        });
+      } else {
+        reactions.forEach((row: any) => {
+          const key = reactionKey(row.ref_type as RefType, row.ref_id);
+          if (!map.has(key)) return;
+          const c = map.get(key)!;
+          if (!c.userReactions.includes(row.type)) {
+            c.userReactions.push(row.type as ReactionType);
+          }
+        });
+        boosts.forEach((row: any) => {
+          const key = reactionKey(row.ref_type as RefType, row.ref_id);
+          if (!map.has(key)) return;
+          map.get(key)!.userBoosted = true;
+        });
       }
     }
-  });
-
-  (boosts || []).forEach((row: any) => {
-    const key = reactionKey(row.ref_type as RefType, row.ref_id);
-    if (!map.has(key)) return;
-    const c = map.get(key)!;
-    c.boosts += 1;
-    if (userId && row.user_id === userId) c.userBoosted = true;
-  });
+  }
 
   return map;
 }
@@ -333,7 +441,8 @@ export async function toggleReaction(
         await awardReputation(
           creatorId,
           points,
-          `Réaction ${type} sur ${title}`
+          `Réaction ${type} sur ${title}`,
+          `reaction:${userId}:${refType}:${refId}:${type}`
         );
       }
     }
@@ -367,7 +476,7 @@ export async function toggleReaction(
   return 'added';
 }
 
-/** Boost : 0 Impact, ranking feed uniquement — icône Zap inchangée */
+/** Boost : 0 Élan, ranking feed uniquement — icône Zap inchangée */
 export async function toggleBoost(
   refId: string,
   refType: RefType,

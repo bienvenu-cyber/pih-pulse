@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { countProjectChatUnreadBatch } from '../../lib/chatRead';
 import { formatRelativeTime } from '../../lib/formatTime';
 import { supabase } from '../../lib/supabase';
 
@@ -81,8 +82,7 @@ export default function ChatInboxScreen() {
 
           if (isProject) {
             const projId = `project-${m.project_id}`;
-            const isUnreadForMe =
-              m.sender_id !== user.id && m.is_read === false;
+            // Unread projet : rempli après via curseurs (pas is_read partagé)
             if (!convMap.has(projId)) {
               const project = pickProfile(m.project) || m.project;
               const name = project?.name || 'Projet';
@@ -90,6 +90,7 @@ export default function ChatInboxScreen() {
               const senderName = sender?.full_name || 'Membre';
               convMap.set(projId, {
                 id: projId,
+                projectUuid: m.project_id,
                 name,
                 role: "Projet d'équipe",
                 initials:
@@ -103,16 +104,12 @@ export default function ChatInboxScreen() {
                 lastMessage: `${senderName}: ${m.text}`,
                 time: formatRelativeTime(m.created_at),
                 sortAt: new Date(m.created_at).getTime(),
-                unreadCount: isUnreadForMe ? 1 : 0,
-                isLastMessageUnread: isUnreadForMe,
+                unreadCount: 0,
+                isLastMessageUnread: false,
                 lastMessageSenderId: m.sender_id,
-                isLastMessageRead: m.is_read,
+                isLastMessageRead: true,
                 isGroup: true,
               });
-            } else if (isUnreadForMe) {
-              const existing = convMap.get(projId);
-              existing.unreadCount += 1;
-              // last message already set from first (newest) hit
             }
           } else {
             const otherUser =
@@ -160,6 +157,22 @@ export default function ChatInboxScreen() {
             }
           }
         });
+
+        // Non-lus projets via read model S1 (batch RPC)
+        const projectUuids = Array.from(convMap.values())
+          .filter((c) => c.isGroup && c.projectUuid)
+          .map((c) => c.projectUuid as string);
+        if (projectUuids.length) {
+          const unreadMap = await countProjectChatUnreadBatch(projectUuids);
+          unreadMap.forEach((n, pid) => {
+            const key = `project-${pid}`;
+            const conv = convMap.get(key);
+            if (conv) {
+              conv.unreadCount = n;
+              conv.isLastMessageUnread = n > 0;
+            }
+          });
+        }
 
         const convList = Array.from(convMap.values()).sort(
           (a, b) => (b.sortAt || 0) - (a.sortAt || 0)

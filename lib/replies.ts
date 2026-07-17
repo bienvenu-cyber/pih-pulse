@@ -1,5 +1,5 @@
 /**
- * Réponses / Questions / Échanges — threads, mentions, pin, Impact feedback.
+ * Réponses / Questions / Échanges — threads, mentions, pin, Élan feedback.
  * UI labels: post=Réponses, mission=Questions, project=Échanges
  */
 import { notifyUser } from './activity';
@@ -405,17 +405,19 @@ export async function pinReply(input: {
           points_awarded: pts,
         });
         if (!aerr) {
-          await supabase.from('reputation_logs').insert({
-            user_id: reply.author_id,
-            points_changed: pts,
-            reason: 'Réponse épinglée',
-          });
+          const { awardPoints } = await import('./reputation');
+          await awardPoints(
+            reply.author_id,
+            pts,
+            'Réponse épinglée',
+            `reply_pin:${input.replyId}`
+          );
           pointsGranted = pts;
           await notifyUser({
             userId: reply.author_id,
             actorId: input.userId,
             type: 'reply_pinned',
-            title: `Réponse épinglée · +${pts} Impact`,
+            title: `Réponse épinglée · +${pts} Élan`,
             body: (reply.body || '').slice(0, 80),
             route: routeForReplyRef(reply.ref_type as ReplyRefType, reply.ref_id),
             refId: reply.ref_id,
@@ -480,17 +482,19 @@ export async function markReplyUseful(input: {
     .update({ useful_count: (reply.useful_count || 0) + 1 })
     .eq('id', input.replyId);
 
-  await supabase.from('reputation_logs').insert({
-    user_id: reply.author_id,
-    points_changed: pts,
-    reason: 'Retour utile sur une réponse',
-  });
+  const { awardPoints } = await import('./reputation');
+  await awardPoints(
+    reply.author_id,
+    pts,
+    'Retour utile sur une réponse',
+    `reply_useful:${input.replyId}`
+  );
 
   await notifyUser({
     userId: reply.author_id,
     actorId: input.userId,
     type: 'reply_useful',
-    title: `Retour utile · +${pts} Impact`,
+    title: `Retour utile · +${pts} Élan`,
     body: (reply.body || '').slice(0, 80),
     route: routeForReplyRef(reply.ref_type as ReplyRefType, reply.ref_id),
     refId: reply.ref_id,

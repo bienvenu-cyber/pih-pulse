@@ -169,13 +169,15 @@ export async function respondProjectInvite(params: {
     .eq('id', inviteId);
   if (updErr) return { error: updErr.message };
 
-  // Impact join (best-effort)
+  // Élan join (best-effort)
   try {
-    await supabase.from('reputation_logs').insert({
-      user_id: userId,
-      points_changed: IMPACT_POINTS.joinProject,
-      reason: `A rejoint le projet « ${projectName} » (invitation)`,
-    });
+    const { awardPoints } = await import('./reputation');
+    await awardPoints(
+      userId,
+      IMPACT_POINTS.joinProject,
+      `A rejoint le projet « ${projectName} » (invitation)`,
+      `join_invite:${invite.project_id}:${userId}`
+    );
   } catch {
     /* ignore */
   }

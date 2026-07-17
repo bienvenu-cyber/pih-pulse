@@ -55,10 +55,9 @@ export default function PostAuthorHeader({
           openProfile();
         }}
         disabled={!authorId}
-        accessibilityRole="button"
+        // link (pas button) → évite <button> imbriqués si la carte parente est interactive
+        accessibilityRole="link"
         accessibilityLabel={`Profil de ${authorName}`}
-        // web: pas un <button> si parent carte a déjà un rôle interactif
-        {...({ role: 'link' } as any)}
         style={{ backgroundColor: colors.deep, borderColor: colors.border }}
         className="w-10 h-10 rounded-full border items-center justify-center overflow-hidden"
       >
@@ -80,7 +79,6 @@ export default function PostAuthorHeader({
             }}
             disabled={!authorId}
             accessibilityRole="link"
-            {...({ role: 'link' } as any)}
             className="shrink"
           >
             <Text

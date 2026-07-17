@@ -219,7 +219,7 @@ export default function CreateMissionScreen() {
         return;
       }
 
-      await grantCreateMissionImpact(user.id, title.trim());
+      await grantCreateMissionImpact(user.id, title.trim(), missionRow?.id);
       if (missionRow?.id) {
         router.replace(`/mission/${missionRow.id}`);
         return;
@@ -259,7 +259,7 @@ export default function CreateMissionScreen() {
     >
       <ImpactBanner
         points={IMPACT_POINTS.createMission}
-        label="Publier une mission crédite +15 Impact. Les contributeurs gagnent aussi à la validation."
+        label="Publier une mission crédite +15 Élan. Les contributeurs gagnent aussi à la validation."
       />
 
       {errorMsg ? <FormAlert message={errorMsg} /> : null}
@@ -350,7 +350,7 @@ export default function CreateMissionScreen() {
           <FormSection
             icon={Award}
             stepLabel="Étape 2"
-            title="Difficulté & Impact"
+            title="Difficulté & Élan"
             subtitle="Calibre l’effort pour attirer le bon profil."
           >
             <ChoiceGrid

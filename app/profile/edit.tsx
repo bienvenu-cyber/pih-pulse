@@ -81,7 +81,7 @@ export default function ProfileEditScreen() {
       setAvatarUrl(url);
       const bonus = await tryGrantProfileCompleteBonus(userId);
       if (bonus) setBonusClaimed(true);
-      setMsg(bonus ? `Photo mise à jour · +${IMPACT_POINTS.profileComplete} Impact !` : 'Photo mise à jour');
+      setMsg(bonus ? `Photo mise à jour · +${IMPACT_POINTS.profileComplete} Élan !` : 'Photo mise à jour');
     } catch (e: any) {
       if (e?.message !== 'CANCELLED') setError(e?.message || 'Upload avatar impossible');
     } finally {
@@ -151,7 +151,7 @@ export default function ProfileEditScreen() {
       if (bonus) setBonusClaimed(true);
       setMsg(
         bonus
-          ? `Enregistré · +${IMPACT_POINTS.profileComplete} Impact profil complet !`
+          ? `Enregistré · +${IMPACT_POINTS.profileComplete} Élan profil complet !`
           : 'Enregistré'
       );
       setTimeout(() => router.back(), 800);
@@ -183,7 +183,7 @@ export default function ProfileEditScreen() {
           label={
             liveCompleteness.missingLabels.length
               ? `Encore : ${liveCompleteness.missingLabels.join(', ')} · +${IMPACT_POINTS.profileComplete} une fois.`
-              : `Profil complet = +${IMPACT_POINTS.profileComplete} Impact (1×).`
+              : `Profil complet = +${IMPACT_POINTS.profileComplete} Élan (1×).`
           }
         />
       ) : bonusClaimed || liveCompleteness.complete ? (

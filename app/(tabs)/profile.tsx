@@ -393,7 +393,7 @@ export default function ProfileScreen() {
     },
     {
       key: 'impact',
-      label: 'Historique Impact',
+      label: 'Historique Élan',
       subtitle: `${points} pts · mouvements & niveau`,
       icon: TrendingUp,
       route: '/profile/impact',
@@ -461,7 +461,7 @@ export default function ProfileScreen() {
           >
             <Sparkles size={14} color={colors.turmeric} strokeWidth={2.3} />
             <Text style={{ color: colors.text }} className="font-inter text-[11px] font-semibold flex-1">
-              Profil incomplet · +{IMPACT_POINTS.profileComplete} Impact
+              Profil incomplet · +{IMPACT_POINTS.profileComplete} Élan
               {completeness.missingLabels.length
                 ? ` · ${completeness.missingLabels.join(', ')}`
                 : ''}
@@ -603,7 +603,7 @@ export default function ProfileScreen() {
             style={{ borderTopWidth: 1, borderTopColor: colors.border }}
           >
             {[
-              { v: points, l: 'Impact', go: () => router.push('/profile/impact') },
+              { v: points, l: 'Élan', go: () => router.push('/profile/impact') },
               { v: stats.projects, l: 'projets' },
               { v: stats.missionsDone, l: 'validées' },
               { v: stats.posts, l: 'posts' },
@@ -642,7 +642,7 @@ export default function ProfileScreen() {
                 />
               </View>
               <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
-                {level.pointsToNext} Impact → {level.nextLevel.name}
+                {level.pointsToNext} Élan → {level.nextLevel.name}
               </Text>
             </View>
           ) : null}

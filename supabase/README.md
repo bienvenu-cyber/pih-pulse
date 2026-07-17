@@ -29,6 +29,11 @@ Le dossier `migrations/` conserve l’**historique incrémental** appliqué sur 
 | `20260716000005_project_location_roles.sql` | projects.location, projects.roles_needed |
 | `20260716000006_project_invites_delete_account.sql` | project_invites + RPC delete_own_account |
 | `20260716000007_notifications_scale.sql` | indexes notifs/messages + realtime publication |
+| `20260717000000_scale_s0_indexes.sql` | **S0** indexes listes/feed/chat/élan (projects, missions, members, messages…) |
+| `20260717000001_award_points_rpc.sql` | **S1** RPC `award_points` + ferme INSERT reputation_logs + idempotency |
+| `20260717000002_chat_read_cursors.sql` | **S1** curseurs lecture chat projet |
+| `20260717000003_engagement_counts.sql` | **S1** compteurs réactions/boosts dénormalisés |
+| `20260717000004_retention.sql` | **S2** `purge_retention` |
 
 ### Seeds
 
@@ -52,4 +57,13 @@ Si le hub affiche des erreurs « column/table missing » ou présence / posts / 
 2. Colle et exécute **`FIX_SPRINT_A_OPS.sql`** (idempotent)
 3. Vérifie le résultat diagnostic (posts, replies, colonnes profil)
 
-Fichiers unitaires (si besoin partiel) : `FIX_POSTS_NOW.sql`, `FIX_REPLIES_NOW.sql`, `FIX_PROFILE_PREFS.sql`, `FIX_PROFILE_TOGGLES.sql`, `FIX_PROJECT_LOCATION_ROLES.sql`, `FIX_INVITES_DELETE_ACCOUNT.sql`, `FIX_NOTIFICATIONS_SCALE.sql`.
+Fichiers unitaires (si besoin partiel) : `FIX_POSTS_NOW.sql`, `FIX_REPLIES_NOW.sql`, `FIX_PROFILE_PREFS.sql`, `FIX_PROFILE_TOGGLES.sql`, `FIX_PROJECT_LOCATION_ROLES.sql`, `FIX_INVITES_DELETE_ACCOUNT.sql`, `FIX_NOTIFICATIONS_SCALE.sql`, `FIX_SCALE_S0.sql`, **`FIX_AWARD_POINTS.sql`**.
+
+### Scale prod (recommandé)
+
+1. **`FIX_PROD_SCALE.sql`** — indexes notifs + S0 + realtime (S0.5)
+2. **`FIX_AWARD_POINTS.sql`** — RPC points (S1)
+3. Edge Function : `npx supabase functions deploy send-push` (voir `functions/send-push/README.md`)
+4. **`FIX_CHAT_READ_AND_COUNTS.sql`** — chat cursors + engagement_counts + purge_retention
+5. **`FIX_SCALE_HARDENING.sql`** — S3 cron, archive messages, hub_feed, award renforcé, notify_many, RLS
+6. Ops : `docs/SCALE_S2_OPS.md` + `scripts/load-test/feed-k6.js`

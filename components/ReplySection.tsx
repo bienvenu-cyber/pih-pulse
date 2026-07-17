@@ -1,6 +1,6 @@
 /**
  * Réponses / Questions / Échanges
- * — threads 2 niveaux, @mentions, pin, retour utile (+Impact)
+ * — threads 2 niveaux, @mentions, pin, retour utile (+Élan)
  */
 import { useRouter } from 'expo-router';
 import {
@@ -145,7 +145,7 @@ export default function ReplySection({ refType, refId, refreshKey = 0 }: Props) 
     if (res.error) setError(res.error);
     else {
       if (res.pointsGranted) {
-        setHint(`Épinglée · +${res.pointsGranted} Impact`);
+        setHint(`Épinglée · +${res.pointsGranted} Élan`);
       }
       await load();
     }
@@ -157,7 +157,7 @@ export default function ReplySection({ refType, refId, refreshKey = 0 }: Props) 
     if (res.error) setError(res.error);
     else {
       if (res.pointsGranted) {
-        setHint(`Retour utile · +${res.pointsGranted} Impact`);
+        setHint(`Retour utile · +${res.pointsGranted} Élan`);
       }
       await load();
     }

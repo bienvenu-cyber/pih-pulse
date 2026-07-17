@@ -5,15 +5,66 @@
  * - Inserts indexés (user_id, is_read, created_at)
  * - Compteurs via count head (pas de full scan)
  * - Realtime filtrée par user_id (pas de broadcast global)
- * - Push Expo en batch (≤100 / requête)
+ * - Push via Edge Function `send-push` (fallback client si non déployée)
  * - Throttle réactions (1 notif / acteur×ref / heure)
  * - Opt-out push_enabled / reminders_enabled respectés
- *
- * Prod avancée : déplacer le push vers Edge Function + queue
- * (le client écrit la notif in-app ; un worker envoie le push).
  */
 import { sendPushBatch, type ExpoPushMessage } from './notifications';
 import { supabase } from './supabase';
+
+/**
+ * Push serveur (Edge) avec fallback Expo client.
+ * Ne bloque jamais le flux notif in-app.
+ */
+async function dispatchPush(opts: {
+  userIds: string[];
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}): Promise<void> {
+  const userIds = Array.from(new Set(opts.userIds.filter(Boolean))).slice(0, 100);
+  if (!userIds.length) return;
+
+  try {
+    const { error } = await supabase.functions.invoke('send-push', {
+      body: {
+        userIds,
+        title: opts.title,
+        body: opts.body,
+        data: opts.data || {},
+      },
+    });
+    if (!error) return;
+    // Function not deployed / network → fallback
+    console.warn('[push] edge fallback:', error.message);
+  } catch (e) {
+    console.warn('[push] edge unavailable, client fallback', e);
+  }
+
+  // Fallback client : fetch tokens + Expo batch
+  try {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, expo_push_token, push_enabled')
+      .in('id', userIds);
+
+    const messages: ExpoPushMessage[] = [];
+    (profiles || []).forEach((p: any) => {
+      if (p.push_enabled === false) return;
+      if (!p.expo_push_token) return;
+      messages.push({
+        to: p.expo_push_token,
+        title: opts.title,
+        body: opts.body,
+        data: opts.data,
+        sound: 'default',
+      });
+    });
+    if (messages.length) await sendPushBatch(messages);
+  } catch (e) {
+    console.warn('[push] client fallback failed:', e);
+  }
+}
 
 export type ActivityType =
   | 'mission_applied'
@@ -157,22 +208,17 @@ export async function notifyUser(params: NotifyParams): Promise<string | null> {
       return data?.id ?? null;
     }
 
-    const token = profile?.expo_push_token;
-    if (token) {
-      await sendPushBatch([
-        {
-          to: token,
-          title,
-          body,
-          data: {
-            route: route || undefined,
-            type,
-            refId: refId || undefined,
-          },
-          sound: 'default',
-        },
-      ]);
-    }
+    // S1 : Edge push (fallback client dans dispatchPush si function absente)
+    await dispatchPush({
+      userIds: [userId],
+      title,
+      body,
+      data: {
+        route: route || undefined,
+        type,
+        refId: refId || undefined,
+      },
+    });
   } catch (e) {
     console.warn('push notify failed:', e);
   }
@@ -180,24 +226,59 @@ export async function notifyUser(params: NotifyParams): Promise<string | null> {
   return data?.id ?? null;
 }
 
-/** Notifie plusieurs users (ex. équipe projet) — inserts + push batch */
+/** Notifie plusieurs users (ex. équipe projet) — bulk insert + 1 push edge */
 export async function notifyMany(
   userIds: string[],
   params: Omit<NotifyParams, 'userId'>
 ): Promise<void> {
-  const unique = Array.from(new Set(userIds.filter(Boolean)));
+  const unique = Array.from(
+    new Set(userIds.filter((id) => id && id !== params.actorId))
+  ).slice(0, 100);
   if (!unique.length) return;
 
-  await Promise.all(
-    unique.map((userId) =>
-      notifyUser({
-        ...params,
-        userId,
-        // throttle désactivé pour les broadcasts équipe (status, etc.)
-        throttle: params.throttle ?? false,
-      })
-    )
-  );
+  // 1) RPC bulk si dispo
+  const { error: rpcErr } = await supabase.rpc('notify_many_users', {
+    p_user_ids: unique,
+    p_actor_id: params.actorId || null,
+    p_type: params.type,
+    p_title: params.title,
+    p_body: params.body,
+    p_route: params.route || null,
+    p_ref_id: params.refId || null,
+    p_ref_type: params.refType || null,
+  });
+
+  if (rpcErr) {
+    // 2) Fallback multi-insert unique requête (chunks 50)
+    const rows = unique.map((userId) => ({
+      user_id: userId,
+      actor_id: params.actorId || null,
+      type: params.type,
+      title: params.title,
+      body: params.body,
+      route: params.route || null,
+      ref_id: params.refId || null,
+      ref_type: params.refType || null,
+    }));
+    for (let i = 0; i < rows.length; i += 50) {
+      const chunk = rows.slice(i, i + 50);
+      const { error } = await supabase.from('activity_notifications').insert(chunk);
+      if (error) console.warn('[notifyMany] insert chunk:', error.message);
+    }
+  }
+
+  if (params.push === false) return;
+
+  await dispatchPush({
+    userIds: unique,
+    title: params.title,
+    body: params.body,
+    data: {
+      route: params.route || undefined,
+      type: params.type,
+      refId: params.refId || undefined,
+    },
+  });
 }
 
 export async function markNotificationRead(id: string): Promise<void> {

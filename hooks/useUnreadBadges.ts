@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { subscribeUserNotifications } from '../lib/activity';
+import { countMyProjectChatUnread } from '../lib/chatRead';
 import { supabase } from '../lib/supabase';
 
 /**
  * Compteurs non-lus scalables :
  * - notifs : count head + realtime filtrée user
  * - chat DM : count head is_read=false
- * - chat projet : messages projet des autres non lus (best-effort)
+ * - chat projet : RPC curseurs (read model S1)
  * Poll de secours 60s si realtime down.
  */
 export function useUnreadBadges(pollMs = 60_000) {
@@ -28,13 +29,7 @@ export function useUnreadBadges(pollMs = 60_000) {
         return;
       }
 
-      const { data: memberships } = await supabase
-        .from('project_members')
-        .select('project_id')
-        .eq('user_id', user.id);
-      const projectIds = (memberships || []).map((m: any) => m.project_id);
-
-      const [notifRes, dmRes] = await Promise.all([
+      const [notifRes, dmRes, projectUnread] = await Promise.all([
         supabase
           .from('activity_notifications')
           .select('id', { count: 'exact', head: true })
@@ -46,19 +41,8 @@ export function useUnreadBadges(pollMs = 60_000) {
           .eq('receiver_id', user.id)
           .eq('is_read', false)
           .is('project_id', null),
+        countMyProjectChatUnread(),
       ]);
-
-      let projectUnread = 0;
-      if (projectIds.length > 0) {
-        const ids = projectIds.slice(0, 50);
-        const { count } = await supabase
-          .from('messages')
-          .select('id', { count: 'exact', head: true })
-          .in('project_id', ids)
-          .neq('sender_id', user.id)
-          .eq('is_read', false);
-        projectUnread = count ?? 0;
-      }
 
       if (mountedRef.current) {
         setNotifCount(notifRes.count ?? 0);
