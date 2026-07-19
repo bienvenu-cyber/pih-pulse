@@ -76,7 +76,7 @@ npx eas submit --profile production --platform ios
 10. [ ] Réaction sur post d’un autre → notif créateur  
 11. [ ] Chat projet → notif membres  
 12. [ ] Push tap → deep link (device physique)  
-13. [ ] Thèmes Malt / OLED / Light  
+13. [ ] Thèmes Clair (défaut) / Malt / Sombre  
 14. [ ] Présence « En ligne » (toggle + public)  
 15. [ ] QR profil offline  
 16. [ ] Suppression de compte (Security)  

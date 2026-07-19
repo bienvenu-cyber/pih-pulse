@@ -7,8 +7,9 @@ Spec : docs/SPLASH.md
 À lancer après chaque régénération d’icônes :
   python3 scripts/generate-splash.py
 
-Le splash natif Expo utilise icon.png (pas ces PNG full-screen).
-Les full-screen servent de maquette / référence visuelle.
+Le splash natif Expo utilise ces PNG full-screen (app.json →
+enableFullScreenImage_legacy), pour le même branding que BrandedSplash
+(logo + from Beyond). Relancer après chaque régénération d’icônes.
 """
 from __future__ import annotations
 

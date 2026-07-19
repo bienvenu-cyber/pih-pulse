@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ReplySection from '../../components/ReplySection';
+import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatDeadlineDate, formatDeadlineLabel } from '../../lib/deadline';
@@ -258,11 +259,13 @@ export default function MissionDetailsScreen() {
         <View className="w-10 h-10" />
       </View>
 
+      <KeyboardSafe className="flex-1" offset={0}>
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <View
           style={{ backgroundColor: colors.card, borderColor: colors.border }}
@@ -719,6 +722,7 @@ export default function MissionDetailsScreen() {
           </View>
         ) : null}
       </ScrollView>
+      </KeyboardSafe>
 
       {modalVisible && (
         <View className="absolute inset-0 bg-black/70 items-center justify-center z-50 px-6">

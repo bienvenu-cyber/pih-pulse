@@ -333,7 +333,7 @@ export default function NotificationsScreen() {
       </View>
 
       {showSkeleton ? (
-        <View className="flex-1 px-4 pt-4">
+        <View className="flex-1 px-4 pt-4" style={{ backgroundColor: colors.bg }}>
           <ListSkeleton count={6} variant="row" />
         </View>
       ) : (

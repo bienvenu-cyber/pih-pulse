@@ -16,6 +16,7 @@ import MediaCarousel from '../../components/MediaCarousel';
 import PostAuthorHeader from '../../components/PostAuthorHeader';
 import ReactionBar from '../../components/ReactionBar';
 import ReplySection from '../../components/ReplySection';
+import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
@@ -133,8 +134,12 @@ export default function PostDetailScreen() {
         )}
       </View>
 
+      <KeyboardSafe className="flex-1" offset={0}>
       <ScrollView
+        className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -217,6 +222,7 @@ export default function PostDetailScreen() {
           </View>
         ) : null}
       </ScrollView>
+      </KeyboardSafe>
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <Pressable

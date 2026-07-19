@@ -2,14 +2,45 @@ import * as Notifications from 'expo-notifications';
 import { Tabs, useRouter } from 'expo-router';
 import { Home, Layers, Target, User, Users } from 'lucide-react-native';
 import { useEffect } from 'react';
-import { AppState, Platform, type AppStateStatus } from 'react-native';
+import { AppState, Platform, Pressable, type AppStateStatus } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandedSplash } from '../../components/BrandedSplash';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
-import { registerForPushNotificationsAsync, savePushToken } from '../../lib/notifications';
+import { ensurePushRegistration } from '../../lib/notifications';
 import { PRESENCE_HEARTBEAT_MS, touchLastSeen } from '../../lib/presence';
 import { supabase } from '../../lib/supabase';
+
+/** Tab button sans ripple Android (ombre grise visible en mode clair). */
+function CleanTabButton(props: any) {
+  const {
+    children,
+    onPress,
+    onLongPress,
+    accessibilityState,
+    accessibilityLabel,
+    testID,
+    style,
+    href: _href,
+    ...rest
+  } = props;
+
+  return (
+    <Pressable
+      {...rest}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      accessibilityLabel={accessibilityLabel}
+      testID={testID}
+      android_ripple={{ color: 'transparent', borderless: false }}
+      style={[{ flex: 1, opacity: 1 }, style]}
+    >
+      {children}
+    </Pressable>
+  );
+}
 
 export default function TabLayout() {
   const router = useRouter();
@@ -21,32 +52,38 @@ export default function TabLayout() {
 
   useEffect(() => {
     if (!ready) return;
+    let cancelled = false;
+
     async function setupNotifications() {
       try {
         const {
           data: { user },
         } = await supabase.auth.getUser();
-        if (!user) return;
-        const { data: pref } = await supabase
-          .from('profiles')
-          .select('push_enabled')
-          .eq('id', user.id)
-          .maybeSingle();
-        if (pref?.push_enabled === false) return;
-        const token = await registerForPushNotificationsAsync();
-        if (token) await savePushToken(user.id, token);
+        if (!user || cancelled) return;
+        // Re-sync token Expo (permission + DB) — requis pour push messages/réactions
+        await ensurePushRegistration(user.id);
       } catch (error) {
         console.error('Error setting up push notifications on mount:', error);
       }
     }
-    setupNotifications();
+    void setupNotifications();
+
+    // Re-register au retour foreground (token peut changer après update OS)
+    const onApp = (state: AppStateStatus) => {
+      if (state === 'active') void setupNotifications();
+    };
+    const appSub = AppState.addEventListener('change', onApp);
 
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const route = response.notification.request.content.data?.route;
       if (route) router.push(route as any);
     });
 
-    return () => subscription.remove();
+    return () => {
+      cancelled = true;
+      appSub.remove();
+      subscription.remove();
+    };
   }, [router, ready]);
 
   useEffect(() => {
@@ -94,6 +131,10 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarActiveTintColor: colors.turmeric,
         tabBarInactiveTintColor: colors.textSecondary,
+        // Pas de fond actif / ripple gris (surtout visible en mode clair Android)
+        tabBarActiveBackgroundColor: 'transparent',
+        tabBarInactiveBackgroundColor: 'transparent',
+        tabBarButton: (props) => <CleanTabButton {...props} />,
         tabBarStyle: {
           backgroundColor: colors.tabBarBg,
           borderTopColor: colors.border,
@@ -107,6 +148,9 @@ export default function TabLayout() {
           borderTopWidth: 1,
           elevation: 0,
           shadowOpacity: 0,
+          shadowColor: 'transparent',
+          shadowOffset: { width: 0, height: 0 },
+          shadowRadius: 0,
         },
         tabBarItemStyle: {
           paddingTop: 4,

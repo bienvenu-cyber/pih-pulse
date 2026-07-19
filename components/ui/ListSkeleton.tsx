@@ -28,27 +28,30 @@ export function SkeletonBlock({
   radius?: number;
   style?: object;
 }) {
-  const { colors } = useThemeFlavor();
-  const opacity = useRef(new Animated.Value(0.35)).current;
+  const { colors, isLight } = useThemeFlavor();
+  const opacity = useRef(new Animated.Value(isLight ? 0.55 : 0.4)).current;
 
   useEffect(() => {
+    const low = isLight ? 0.45 : 0.35;
+    const high = isLight ? 0.95 : 0.75;
+    opacity.setValue(low);
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, {
-          toValue: 0.75,
-          duration: 700,
+          toValue: high,
+          duration: 750,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
-          toValue: 0.35,
-          duration: 700,
+          toValue: low,
+          duration: 750,
           useNativeDriver: true,
         }),
       ])
     );
     loop.start();
     return () => loop.stop();
-  }, [opacity]);
+  }, [opacity, isLight]);
 
   return (
     <Animated.View
@@ -57,7 +60,8 @@ export function SkeletonBlock({
           width: width as any,
           height,
           borderRadius: radius,
-          backgroundColor: colors.border,
+          // Couleur dédiée (clair = beige doux, jamais malt sombre)
+          backgroundColor: colors.skeleton,
           opacity,
         },
         style,
@@ -86,20 +90,21 @@ export default function ListSkeleton({
   const { colors } = useThemeFlavor();
 
   if (variant === 'row') {
+    // Notifs / talents / chat — carte claire + barres soft
     return (
-      <View className="gap-3">
+      <View className="gap-2.5">
         {Array.from({ length: count }).map((_, i) => (
           <View
             key={i}
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl p-4 flex-row items-center gap-3"
+            className="border rounded-2xl px-3.5 py-3.5 flex-row items-center gap-3"
           >
-            <SkeletonBlock width={48} height={48} radius={24} />
+            <SkeletonBlock width={44} height={44} radius={22} />
             <View className="flex-1 gap-2">
-              <SkeletonBlock width="55%" height={12} />
-              <SkeletonBlock width="35%" height={10} />
+              <SkeletonBlock width="52%" height={12} radius={6} />
+              <SkeletonBlock width="78%" height={10} radius={5} />
             </View>
-            <SkeletonBlock width={40} height={10} />
+            <SkeletonBlock width={36} height={9} radius={4} />
           </View>
         ))}
       </View>
@@ -107,34 +112,51 @@ export default function ListSkeleton({
   }
 
   if (variant === 'detail') {
+    // Fiche projet / mission / post / event — layout premium complet
     return (
       <View className="gap-3 p-4">
+        {/* Hero titre + meta */}
         <CardShell>
-          <SkeletonBlock width="40%" height={10} />
-          <SkeletonBlock width="75%" height={20} />
-          <SkeletonBlock width="100%" height={12} />
-          <SkeletonBlock width="90%" height={12} />
-          <SkeletonBlock width="55%" height={12} />
+          <View className="flex-row items-center gap-2">
+            <SkeletonBlock width={64} height={22} radius={11} />
+            <SkeletonBlock width={48} height={22} radius={11} />
+          </View>
+          <SkeletonBlock width="88%" height={22} radius={8} />
+          <SkeletonBlock width="62%" height={14} radius={6} />
+          <View className="gap-2 mt-1">
+            <SkeletonBlock width="100%" height={11} radius={5} />
+            <SkeletonBlock width="96%" height={11} radius={5} />
+            <SkeletonBlock width="72%" height={11} radius={5} />
+          </View>
           <View className="flex-row gap-2 mt-1">
-            <SkeletonBlock width={72} height={28} radius={14} />
-            <SkeletonBlock width={72} height={28} radius={14} />
+            <SkeletonBlock width={70} height={28} radius={14} />
+            <SkeletonBlock width={70} height={28} radius={14} />
+            <SkeletonBlock width={70} height={28} radius={14} />
           </View>
         </CardShell>
-        <CardShell>
-          <SkeletonBlock width="30%" height={10} />
-          <SkeletonBlock width="100%" height={12} />
-          <SkeletonBlock width="100%" height={12} />
-          <SkeletonBlock width="70%" height={12} />
-        </CardShell>
+
+        {/* Auteur / lead */}
         <CardShell>
           <View className="flex-row items-center gap-3">
-            <SkeletonBlock width={40} height={40} radius={20} />
+            <SkeletonBlock width={44} height={44} radius={22} />
             <View className="flex-1 gap-2">
-              <SkeletonBlock width="50%" height={12} />
-              <SkeletonBlock width="35%" height={10} />
+              <SkeletonBlock width="48%" height={13} radius={6} />
+              <SkeletonBlock width="34%" height={10} radius={5} />
             </View>
+            <SkeletonBlock width={72} height={32} radius={16} />
           </View>
         </CardShell>
+
+        {/* Section contenu */}
+        <CardShell>
+          <SkeletonBlock width="30%" height={12} radius={6} />
+          <SkeletonBlock width="100%" height={11} radius={5} />
+          <SkeletonBlock width="100%" height={11} radius={5} />
+          <SkeletonBlock width="58%" height={11} radius={5} />
+        </CardShell>
+
+        {/* CTA bas */}
+        <SkeletonBlock width="100%" height={48} radius={16} />
       </View>
     );
   }
@@ -146,26 +168,49 @@ export default function ListSkeleton({
           <View className="flex-row items-start gap-3.5">
             <SkeletonBlock width={72} height={72} radius={36} />
             <View className="flex-1 gap-2 pt-1">
-              <SkeletonBlock width="60%" height={16} />
-              <SkeletonBlock width="40%" height={10} />
-              <SkeletonBlock width="70%" height={10} />
+              <SkeletonBlock width="58%" height={16} radius={7} />
+              <SkeletonBlock width="36%" height={10} radius={5} />
+              <SkeletonBlock width="48%" height={10} radius={5} />
             </View>
+            <SkeletonBlock width={52} height={28} radius={8} />
           </View>
-          <View className="flex-row gap-2 mt-2">
-            <SkeletonBlock width="48%" height={40} radius={12} />
-            <SkeletonBlock width="48%" height={40} radius={12} />
+          <View
+            className="flex-row mt-3 pt-3"
+            style={{ borderTopWidth: 1, borderTopColor: colors.border }}
+          >
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} className="flex-1 items-center gap-1.5">
+                <SkeletonBlock width={28} height={14} radius={6} />
+                <SkeletonBlock width={36} height={8} radius={4} />
+              </View>
+            ))}
           </View>
         </CardShell>
-        <View className="flex-row gap-2">
-          <SkeletonBlock width="31%" height={64} radius={14} />
-          <SkeletonBlock width="31%" height={64} radius={14} />
-          <SkeletonBlock width="31%" height={64} radius={14} />
-        </View>
         <CardShell>
-          <SkeletonBlock width="40%" height={12} />
-          <SkeletonBlock width="100%" height={44} radius={12} />
-          <SkeletonBlock width="100%" height={44} radius={12} />
-          <SkeletonBlock width="100%" height={44} radius={12} />
+          <SkeletonBlock width="28%" height={12} radius={6} />
+          <SkeletonBlock width="100%" height={12} radius={5} />
+          <SkeletonBlock width="88%" height={12} radius={5} />
+          <View className="flex-row gap-1.5 mt-1">
+            <SkeletonBlock width={64} height={24} radius={12} />
+            <SkeletonBlock width={56} height={24} radius={12} />
+            <SkeletonBlock width={72} height={24} radius={12} />
+          </View>
+        </CardShell>
+        <CardShell>
+          <View className="flex-row items-center gap-3">
+            <SkeletonBlock width={36} height={36} radius={10} />
+            <View className="flex-1 gap-1.5">
+              <SkeletonBlock width="42%" height={12} radius={6} />
+              <SkeletonBlock width="62%" height={10} radius={5} />
+            </View>
+          </View>
+          <View className="flex-row items-center gap-3">
+            <SkeletonBlock width={36} height={36} radius={10} />
+            <View className="flex-1 gap-1.5">
+              <SkeletonBlock width="48%" height={12} radius={6} />
+              <SkeletonBlock width="55%" height={10} radius={5} />
+            </View>
+          </View>
         </CardShell>
       </View>
     );
@@ -174,12 +219,12 @@ export default function ListSkeleton({
   if (variant === 'form') {
     return (
       <View className="gap-4 p-4">
-        <SkeletonBlock width="35%" height={12} />
-        <SkeletonBlock width="100%" height={48} radius={12} />
-        <SkeletonBlock width="35%" height={12} />
-        <SkeletonBlock width="100%" height={48} radius={12} />
-        <SkeletonBlock width="35%" height={12} />
-        <SkeletonBlock width="100%" height={96} radius={12} />
+        <SkeletonBlock width="35%" height={12} radius={6} />
+        <SkeletonBlock width="100%" height={48} radius={14} />
+        <SkeletonBlock width="35%" height={12} radius={6} />
+        <SkeletonBlock width="100%" height={48} radius={14} />
+        <SkeletonBlock width="35%" height={12} radius={6} />
+        <SkeletonBlock width="100%" height={96} radius={14} />
         <SkeletonBlock width="100%" height={48} radius={14} />
       </View>
     );
@@ -190,8 +235,8 @@ export default function ListSkeleton({
       <View className="flex-1 px-4 py-6 gap-4">
         <View className="items-center gap-3 mb-4">
           <SkeletonBlock width={56} height={56} radius={28} />
-          <SkeletonBlock width="40%" height={12} />
-          <SkeletonBlock width="55%" height={10} />
+          <SkeletonBlock width="40%" height={12} radius={6} />
+          <SkeletonBlock width="55%" height={10} radius={5} />
         </View>
         {Array.from({ length: count }).map((_, i) => {
           const mine = i % 2 === 1;
@@ -201,11 +246,7 @@ export default function ListSkeleton({
               className={mine ? 'self-end items-end' : 'self-start items-start'}
               style={{ maxWidth: '78%', gap: 6 }}
             >
-              <SkeletonBlock
-                width={mine ? 180 : 200}
-                height={44}
-                radius={16}
-              />
+              <SkeletonBlock width={mine ? 180 : 200} height={44} radius={16} />
               <SkeletonBlock width={48} height={8} radius={4} />
             </View>
           );
@@ -226,13 +267,13 @@ export default function ListSkeleton({
           <View className="flex-row items-center gap-3">
             <SkeletonBlock width={40} height={40} radius={20} />
             <View className="flex-1 gap-2">
-              <SkeletonBlock width="45%" height={12} />
-              <SkeletonBlock width="70%" height={10} />
+              <SkeletonBlock width="45%" height={12} radius={6} />
+              <SkeletonBlock width="70%" height={10} radius={5} />
             </View>
           </View>
-          <SkeletonBlock width="90%" height={14} />
-          <SkeletonBlock width="100%" height={12} />
-          <SkeletonBlock width="40%" height={10} />
+          <SkeletonBlock width="90%" height={14} radius={6} />
+          <SkeletonBlock width="100%" height={12} radius={5} />
+          <SkeletonBlock width="40%" height={10} radius={5} />
         </View>
       ))}
     </View>
@@ -241,7 +282,7 @@ export default function ListSkeleton({
 
 /**
  * Plein écran data loading — header optionnel déjà monté par le parent.
- * Remplace les ActivityIndicator centrés pour les fetches initiaux.
+ * Fond toujours `colors.bg` (suit le thème clair/sombre).
  */
 export function ScreenSkeleton({
   variant = 'detail',
@@ -253,10 +294,17 @@ export function ScreenSkeleton({
   padded?: boolean;
 }) {
   const { colors } = useThemeFlavor();
+  const needsOuterPad =
+    padded &&
+    variant !== 'detail' &&
+    variant !== 'profile' &&
+    variant !== 'form' &&
+    variant !== 'chat';
+
   return (
     <View
       className="flex-1"
-      style={{ backgroundColor: colors.bg, padding: padded && variant !== 'detail' && variant !== 'profile' && variant !== 'form' && variant !== 'chat' ? 16 : 0 }}
+      style={{ backgroundColor: colors.bg, padding: needsOuterPad ? 16 : 0 }}
     >
       <ListSkeleton variant={variant} count={count} />
     </View>

@@ -9,7 +9,7 @@
 import { Image as ExpoImage } from 'expo-image';
 import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Pause, Play, Volume2, VolumeX, X, ZoomIn } from 'lucide-react-native';
+import { Pause, Play, Volume2, VolumeX, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image as RNImage,
@@ -210,23 +210,7 @@ function CoverImage({
         onLoad={() => setLoaded(true)}
         onError={() => setLoaded(true)}
       />
-      {onPress ? (
-        <View
-          style={{
-            position: 'absolute',
-            right: 8,
-            top: 8,
-            width: 28,
-            height: 28,
-            borderRadius: 14,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <ZoomIn size={14} color="#F5EDD6" />
-        </View>
-      ) : null}
+      {/* Tap ouvre la lightbox — pas d’icône zoom visible */}
     </Pressable>
   );
 }
@@ -364,26 +348,7 @@ function InlineVideoPlayer({
         </View>
       ) : null}
 
-      {onOpenLightbox ? (
-        <Pressable
-          onPress={onOpenLightbox}
-          style={{
-            position: 'absolute',
-            right: 8,
-            top: 8,
-            width: 28,
-            height: 28,
-            borderRadius: 14,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          hitSlop={6}
-          accessibilityLabel="Agrandir"
-        >
-          <ZoomIn size={14} color="#F5EDD6" />
-        </Pressable>
-      ) : null}
+      {/* Tap média → lightbox (pas d’icône zoom en coin) */}
     </View>
   );
 }

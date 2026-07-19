@@ -1,5 +1,4 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import {
   Camera,
   CheckCircle,
@@ -19,7 +18,6 @@ import {
 import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  DeviceEventEmitter,
   Image,
   Modal,
   Platform,
@@ -51,7 +49,7 @@ import {
 } from '../../lib/notifications';
 import { formatLevelName, getLevelProgress } from '../../lib/reputation';
 import { supabase } from '../../lib/supabase';
-import type { ThemeFlavor } from '../../lib/theme';
+import { THEME_FLAVOR_LABELS, type ThemeFlavor } from '../../lib/theme';
 import QRCode from 'react-native-qrcode-svg';
 
 type MenuItem = {
@@ -99,11 +97,13 @@ export default function ProfileScreen() {
   });
   const [shareOpen, setShareOpen] = useState(false);
   const [headerVisible, setHeaderVisible] = useState(true);
-  const { flavor: themeFlavor, colors } = useThemeFlavor();
+  const { flavor: themeFlavor, colors, setFlavor } = useThemeFlavor();
   const headerOffset = useCollapsibleHeaderOffset();
   const listBottom = useTabListBottomPadding();
   const lastOffsetY = useRef(0);
   const router = useRouter();
+  /** Évite de re-afficher le skeleton plein écran au simple refocus */
+  const hasLoadedOnce = useRef(false);
 
   const handleScroll = (event: any) => {
     const y = event.nativeEvent.contentOffset.y;
@@ -116,7 +116,11 @@ export default function ProfileScreen() {
     lastOffsetY.current = y;
   };
 
-  const fetchProfileData = useCallback(async () => {
+  const fetchProfileData = useCallback(async (mode: 'init' | 'refresh' | 'focus' = 'init') => {
+    // Skeleton plein écran uniquement au premier chargement (pas au focus / PTR)
+    if (mode === 'init' && !hasLoadedOnce.current) {
+      setLoading(true);
+    }
     try {
       const {
         data: { user },
@@ -221,6 +225,7 @@ export default function ProfileScreen() {
         missionsDone: mDoneRes.count ?? 0,
         posts: postsRes.count ?? 0,
       });
+      hasLoadedOnce.current = true;
     } catch (e) {
       console.error(e);
     } finally {
@@ -231,28 +236,18 @@ export default function ProfileScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchProfileData();
+    await fetchProfileData('refresh');
   }, [fetchProfileData]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchProfileData();
+      void fetchProfileData(hasLoadedOnce.current ? 'focus' : 'init');
     }, [fetchProfileData])
   );
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace('/login');
-  };
-
-  const setTheme = async (flavor: ThemeFlavor) => {
-    try {
-      if (Platform.OS === 'web') localStorage.setItem('theme_flavor', flavor);
-      else await SecureStore.setItemAsync('theme_flavor', flavor);
-    } catch {
-      /* ignore */
-    }
-    DeviceEventEmitter.emit('THEME_FLAVOR_CHANGED', flavor);
   };
 
   const handleAvatarUpload = async () => {
@@ -433,10 +428,11 @@ export default function ProfileScreen() {
     },
   ];
 
+  // Ordre produit : Clair (défaut) · Malt · Sombre (ex-OLED)
   const themes: { id: ThemeFlavor; label: string }[] = [
-    { id: 'malt', label: 'Malt' },
-    { id: 'oled', label: 'OLED' },
-    { id: 'light', label: 'Clair' },
+    { id: 'light', label: THEME_FLAVOR_LABELS.light },
+    { id: 'malt', label: THEME_FLAVOR_LABELS.malt },
+    { id: 'dark', label: THEME_FLAVOR_LABELS.dark },
   ];
 
   const statusLabel = (s: string) => {
@@ -541,11 +537,12 @@ export default function ProfileScreen() {
                   {username}
                 </Text>
               ) : null}
-              {/* Rôle · Dispo · En ligne — ligne méta fine, plus de chips bordés */}
+              {/* Rôle + icônes statut (point en ligne déjà sur l’avatar) */}
               <ProfileStatusMeta
                 roleLabel={roleLabel}
                 available={available}
                 online={onlineSelf}
+                hideOnlineDot
               />
             </View>
 
@@ -826,12 +823,16 @@ export default function ProfileScreen() {
               return (
                 <Pressable
                   key={t.id}
-                  onPress={() => setTheme(t.id)}
+                  onPress={() => setFlavor(t.id)}
+                  disabled={active}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Thème ${t.label}`}
                   style={{
                     backgroundColor: active ? colors.turmeric : colors.deep,
                     borderColor: active ? colors.turmeric : colors.border,
                   }}
-                  className="flex-1 py-2.5 rounded-xl border items-center flex-row justify-center gap-1"
+                  className="flex-1 py-2.5 rounded-xl border items-center flex-row justify-center gap-1 active:opacity-85"
                 >
                   {active ? <CheckCircle size={12} color={colors.onTurmeric} /> : null}
                   <Text

@@ -6,7 +6,6 @@ import { ArrowLeft, Check, ChevronRight, type LucideIcon } from 'lucide-react-na
 import { type ReactNode, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -18,6 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeFlavor } from '../../../hooks/useThemeFlavor';
+import KeyboardSafe from '../KeyboardSafe';
 import ListSkeleton from '../ListSkeleton';
 
 /* ─── Shell ─────────────────────────────────────────────── */
@@ -119,11 +119,7 @@ export function FormScreen({
         ) : null}
       </View>
 
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
-      >
+      <KeyboardSafe className="flex-1" offset={8}>
         <ScrollView
           className="flex-1"
           contentContainerStyle={{
@@ -132,6 +128,7 @@ export function FormScreen({
             gap: 16,
           }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           {children}
@@ -150,7 +147,7 @@ export function FormScreen({
             {footer}
           </View>
         ) : null}
-      </KeyboardAvoidingView>
+      </KeyboardSafe>
     </View>
   );
 }

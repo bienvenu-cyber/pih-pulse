@@ -5,28 +5,31 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 
 /**
- * Splash premium PIH Pulse (runtime JS) :
+ * Unique branding splash PIH Pulse (runtime JS) :
  * - logo Élan centré
  * - « from Beyond » en bas
+ * Aligné sur le splash natif (splash-light / splash-dark).
  *
- * Spec régénération icônes / splash : docs/SPLASH.md
+ * Spec : docs/SPLASH.md
  * Suit le mode système (clair/sombre) +, si déjà choisi, le theme_flavor app
- * (light → clair ; malt/oled → sombre).
+ * (light → clair ; malt/dark → sombre).
  */
 export function BrandedSplash() {
   const system = useColorScheme();
   const insets = useSafeAreaInsets();
-  const [flavor, setFlavor] = useState<'malt' | 'oled' | 'light' | null>(null);
+  const [flavor, setFlavor] = useState<'malt' | 'dark' | 'light' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const val =
+        const raw =
           Platform.OS === 'web'
             ? localStorage.getItem('theme_flavor')
             : await SecureStore.getItemAsync('theme_flavor');
-        if (!cancelled && (val === 'oled' || val === 'malt' || val === 'light')) {
+        // legacy oled → dark
+        const val = raw === 'oled' ? 'dark' : raw;
+        if (!cancelled && (val === 'dark' || val === 'malt' || val === 'light')) {
           setFlavor(val);
         }
       } catch {
@@ -38,8 +41,9 @@ export function BrandedSplash() {
     };
   }, []);
 
+  // Défaut produit clair ; sans préférence → clair (ou système)
   const isLight =
-    flavor === 'light' || (flavor == null && system === 'light');
+    flavor === 'light' || (flavor == null && system !== 'dark');
 
   const bg = isLight ? '#F8F5EC' : '#0D0B05';
   const fromColor = '#A39171';

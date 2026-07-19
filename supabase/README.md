@@ -49,6 +49,17 @@ Si ta base a déjà été créée avec un ancien `supabase_schema.sql`, applique
 
 Si tu repartes de zéro, applique uniquement **`supabase_schema.sql`** (il inclut tout).
 
+### FIX ops (prod)
+
+| Fichier | Quand |
+|---------|--------|
+| `FIX_NOTIFS_PUSH.sql` | Notifs cloche vides et/ou push messages/réactions absents (RLS + realtime) |
+
+Push serveur (optionnel scale) :
+```bash
+npx supabase functions deploy send-push
+```
+
 ## Fix rapide (prod déjà en place)
 
 Si le hub affiche des erreurs « column/table missing » ou présence / posts / replies cassés :

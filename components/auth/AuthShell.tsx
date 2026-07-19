@@ -6,8 +6,6 @@ import { ArrowLeft } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -15,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import KeyboardSafe from '../ui/KeyboardSafe';
 
 interface Props {
   onBack?: () => void;
@@ -82,10 +81,7 @@ export default function AuthShell({
         <View className="flex-1" />
       </View>
 
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafe className="flex-1" offset={12}>
         <ScrollView
           className="flex-1"
           contentContainerStyle={{
@@ -95,6 +91,7 @@ export default function AuthShell({
             flexGrow: 1,
           }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           {/* Brand mark */}
@@ -153,7 +150,7 @@ export default function AuthShell({
             {footer}
           </View>
         ) : null}
-      </KeyboardAvoidingView>
+      </KeyboardSafe>
     </View>
   );
 }

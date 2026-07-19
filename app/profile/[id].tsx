@@ -6,7 +6,6 @@ import {
   ExternalLink,
   Layers,
   Link2,
-  Send,
   UserPlus,
 } from 'lucide-react-native';
 import {
@@ -36,6 +35,7 @@ export default function MemberProfileDetailsScreen() {
 
   const [talent, setTalent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const hasLoadedOnce = React.useRef(false);
   const [meId, setMeId] = useState<string | null>(null);
   const [myLeadProjects, setMyLeadProjects] = useState<any[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -43,6 +43,8 @@ export default function MemberProfileDetailsScreen() {
   const [inviteMsg, setInviteMsg] = useState('');
 
   const fetchTalentDetails = useCallback(async () => {
+    // Skeleton seulement si pas encore de data (pas de flash au re-focus)
+    if (!hasLoadedOnce.current) setLoading(true);
     try {
       const {
         data: { user },
@@ -161,6 +163,7 @@ export default function MemberProfileDetailsScreen() {
         activeMissions: inProgress.length,
         portfolioLinks,
       });
+      hasLoadedOnce.current = true;
     } catch (err) {
       console.error(err);
       setTalent(null);
@@ -286,6 +289,7 @@ export default function MemberProfileDetailsScreen() {
                 roleLabel={talent.role}
                 available={talent.available}
                 online={talent.online}
+                hideOnlineDot
               />
             </View>
             <View
@@ -437,10 +441,14 @@ export default function MemberProfileDetailsScreen() {
           <View className="gap-2 mt-2">
             <Pressable
               onPress={handleContact}
-              className="bg-turmeric h-12 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90"
+              className="bg-turmeric h-12 rounded-2xl items-center justify-center active:opacity-90"
+              accessibilityRole="button"
+              accessibilityLabel="Contacter"
             >
-              <Send size={16} color="#0D0B05" style={{ transform: [{ rotate: '30deg' }] }} />
-              <Text className="text-malt-deep font-inter-bold text-sm font-bold">
+              <Text
+                style={{ color: colors.onTurmeric }}
+                className="font-inter text-[15px] font-bold"
+              >
                 Contacter
               </Text>
             </Pressable>

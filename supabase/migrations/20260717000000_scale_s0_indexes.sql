@@ -43,7 +43,7 @@ create index if not exists idx_messages_sender_receiver
   on public.messages (sender_id, receiver_id, created_at desc)
   where project_id is null;
 
--- Élan / notifs inbox chronologique
+-- Impact / notifs inbox chronologique
 create index if not exists idx_reputation_logs_user_created
   on public.reputation_logs (user_id, created_at desc);
 

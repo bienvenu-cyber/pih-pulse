@@ -882,16 +882,24 @@ export default function FeedScreen() {
                               </Text>
                             </View>
                           ) : null}
-                          <View className="flex-1" />
-                          <View className="flex-row items-center gap-0.5">
-                            <Text
-                              className="font-inter text-[11px] font-semibold"
-                              style={{ color: colors.textSecondary }}
-                            >
-                              {item.ctaText || (item.type === 'event' ? 'Voir' : 'Ouvrir')}
-                            </Text>
-                            <ChevronRight size={13} color={colors.textSecondary} strokeWidth={2.2} />
-                          </View>
+                          {item.type !== 'project' ? (
+                            <>
+                              <View className="flex-1" />
+                              <View className="flex-row items-center gap-0.5">
+                                <Text
+                                  className="font-inter text-[11px] font-semibold"
+                                  style={{ color: colors.textSecondary }}
+                                >
+                                  {item.ctaText || (item.type === 'event' ? 'Voir' : 'Ouvrir')}
+                                </Text>
+                                <ChevronRight
+                                  size={13}
+                                  color={colors.textSecondary}
+                                  strokeWidth={2.2}
+                                />
+                              </View>
+                            </>
+                          ) : null}
                         </View>
                       )}
                     </Pressable>

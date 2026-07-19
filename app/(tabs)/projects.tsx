@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { ExternalLink, Layers, MapPin, Plus, Search, Users } from 'lucide-react-native';
+import { Layers, MapPin, Plus, Search, Users } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
@@ -462,16 +462,6 @@ export default function ProjectsScreen() {
                       </Text>
                     </View>
                     <ReplyCountBadge count={project.replyCount} />
-                    <View className="flex-1" />
-                    <View className="flex-row items-center gap-0.5">
-                      <Text
-                        style={{ color: colors.textSecondary }}
-                        className="font-inter text-[11px] font-bold"
-                      >
-                        Voir
-                      </Text>
-                      <ExternalLink size={12} color={colors.textSecondary} />
-                    </View>
                   </View>
                 </Pressable>
 

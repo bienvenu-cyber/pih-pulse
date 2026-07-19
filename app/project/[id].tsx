@@ -16,6 +16,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ReplySection from '../../components/ReplySection';
 import EmptyState from '../../components/ui/EmptyState';
+import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { joinProject, updateProjectStatus } from '../../lib/hub';
@@ -363,10 +364,13 @@ export default function ProjectDetailsScreen() {
         )}
       </View>
 
-      <ScrollView 
+      <KeyboardSafe className="flex-1" offset={0}>
+      <ScrollView
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: 110 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {pendingInvite ? (
           <View
@@ -645,6 +649,7 @@ export default function ProjectDetailsScreen() {
           </Pressable>
         )}
       </View>
+      </KeyboardSafe>
 
       {/* Custom Alert Modal */}
       {modalVisible && (

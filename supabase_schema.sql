@@ -403,6 +403,18 @@ create table if not exists public.activity_notifications (
 );
 alter table public.activity_notifications enable row level security;
 
+drop policy if exists "Users read own notifications." on public.activity_notifications;
+create policy "Users read own notifications." on public.activity_notifications
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "Users update own notifications." on public.activity_notifications;
+create policy "Users update own notifications." on public.activity_notifications
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "Authenticated can insert notifications." on public.activity_notifications;
+create policy "Authenticated can insert notifications." on public.activity_notifications
+  for insert with check (auth.role() = 'authenticated');
+
 -- ────────────────────────────────────────────────────────────
 -- 12. HUB EVENTS (feed)
 -- ────────────────────────────────────────────────────────────

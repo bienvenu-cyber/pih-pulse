@@ -7,7 +7,6 @@ import { DeviceEventEmitter, Platform } from 'react-native';
 import 'react-native-reanimated';
 import '../global.css';
 
-import { useColorScheme } from '@/components/useColorScheme';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -18,6 +17,12 @@ import {
   SpaceGrotesk_500Medium,
   SpaceGrotesk_700Bold
 } from '@expo-google-fonts/space-grotesk';
+import {
+  DEFAULT_THEME_FLAVOR,
+  getThemeColors,
+  normalizeThemeFlavor,
+  type ThemeFlavor,
+} from '../lib/theme';
 import { supabase } from '../lib/supabase';
 
 export {
@@ -68,8 +73,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-  const [themeFlavor, setThemeFlavor] = useState<'malt' | 'oled' | 'light'>('malt');
+  const [themeFlavor, setThemeFlavor] = useState<ThemeFlavor>(DEFAULT_THEME_FLAVOR);
   const router = useRouter();
 
   useEffect(() => {
@@ -84,57 +88,48 @@ function RootLayoutNav() {
   }, []);
 
   useEffect(() => {
-    // Load saved theme flavor safely (web compatibility)
     async function loadSavedTheme() {
       try {
-        const val = Platform.OS === 'web'
-          ? localStorage.getItem('theme_flavor')
-          : await SecureStore.getItemAsync('theme_flavor');
-        if (val === 'oled' || val === 'malt' || val === 'light') {
-          setThemeFlavor(val as any);
-        }
+        const val =
+          Platform.OS === 'web'
+            ? localStorage.getItem('theme_flavor')
+            : await SecureStore.getItemAsync('theme_flavor');
+        const normalized = normalizeThemeFlavor(val);
+        if (normalized) setThemeFlavor(normalized);
       } catch (e) {
         console.warn('Could not load theme flavor:', e);
       }
     }
     loadSavedTheme();
 
-    // Listen for changes
     const sub = DeviceEventEmitter.addListener('THEME_FLAVOR_CHANGED', (flavor) => {
-      if (flavor === 'oled' || flavor === 'malt' || flavor === 'light') {
-        setThemeFlavor(flavor);
-      }
+      const normalized = normalizeThemeFlavor(flavor);
+      if (normalized) setThemeFlavor(normalized);
     });
 
     return () => sub.remove();
   }, []);
 
   const isLight = themeFlavor === 'light';
+  const c = getThemeColors(themeFlavor);
 
-  const activeDarkTheme = {
-    ...DarkTheme,
+  // Thème navigation = flavor app (pas le mode système) → ripple Android correct
+  const navTheme = {
+    ...(isLight ? DefaultTheme : DarkTheme),
+    dark: !isLight,
     colors: {
-      ...DarkTheme.colors,
-      background: isLight ? '#F8F5EC' : (themeFlavor === 'oled' ? '#000000' : '#0D0B05'),
-      card: isLight ? '#F0EAD6' : (themeFlavor === 'oled' ? '#0A0A0A' : '#080703'),
-      text: isLight ? '#0D0B05' : '#F5EDD6',
-      border: isLight ? '#E6DCBD' : (themeFlavor === 'oled' ? '#1F1F1F' : '#261F12'),
-    }
-  };
-
-  const activeDefaultTheme = {
-    ...DefaultTheme,
-    colors: {
-      ...DefaultTheme.colors,
-      background: isLight ? '#F8F5EC' : (themeFlavor === 'oled' ? '#000000' : '#0D0B05'),
-      card: isLight ? '#F0EAD6' : (themeFlavor === 'oled' ? '#0A0A0A' : '#080703'),
-      text: isLight ? '#0D0B05' : '#F5EDD6',
-      border: isLight ? '#E6DCBD' : (themeFlavor === 'oled' ? '#1F1F1F' : '#261F12'),
-    }
+      ...(isLight ? DefaultTheme.colors : DarkTheme.colors),
+      primary: c.turmeric,
+      background: c.bg,
+      card: c.nav,
+      text: c.text,
+      border: c.border,
+      notification: c.turmeric,
+    },
   };
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? activeDarkTheme : activeDefaultTheme}>
+    <ThemeProvider value={navTheme}>
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="config-error" options={{ headerShown: false }} />

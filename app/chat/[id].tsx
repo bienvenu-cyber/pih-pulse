@@ -3,18 +3,17 @@ import { AlertTriangle, ArrowLeft, Check, CheckCheck, CheckCircle, Send } from '
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Platform,
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
+import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { markProjectChatRead } from '../../lib/chatRead';
@@ -33,6 +32,7 @@ function paramToString(v: string | string[] | undefined): string {
 
 export default function ChatRoomScreen() {
   const { colors } = useThemeFlavor();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const chatId = useMemo(() => paramToString(params.id), [params.id]);
   const router = useRouter();
@@ -63,7 +63,6 @@ export default function ChatRoomScreen() {
   } | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
   const [myName, setMyName] = useState('Un collaborateur');
-  const [projectTokens, setProjectTokens] = useState<string[]>([]);
   const [projectMemberIds, setProjectMemberIds] = useState<string[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -150,15 +149,14 @@ export default function ChatRoomScreen() {
             });
           }
 
-          // 2b. Fetch project members to cache their names and tokens
+          // 2b. Membres projet (noms + ids pour notifs)
           const names: Record<string, string> = {};
           const { data: members, error: memError } = await supabase
             .from('project_members')
-            .select('user_id, profiles(full_name, expo_push_token)')
+            .select('user_id, profiles(full_name)')
             .eq('project_id', projectId);
 
           if (!memError && members) {
-            const tokens: string[] = [];
             const otherIds: string[] = [];
             members.forEach((m: any) => {
               const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
@@ -167,13 +165,9 @@ export default function ChatRoomScreen() {
               }
               if (profile) {
                 names[m.user_id] = profile.full_name || 'Collaborateur';
-                if (m.user_id !== user.id && profile.expo_push_token) {
-                  tokens.push(profile.expo_push_token);
-                }
               }
             });
             setMemberNames(names);
-            setProjectTokens(tokens);
             setProjectMemberIds(otherIds);
           }
 
@@ -520,40 +514,25 @@ export default function ChatRoomScreen() {
           )
         );
 
-        // Notif in-app + push (deep link vers le fil)
-        const { notifyUser } = await import('../../lib/activity');
+        // Notif in-app + push (edge puis client fallback — une seule voie pour éviter doubles)
+        const { notifyMany, notifyUser } = await import('../../lib/activity');
         if (isProjectChat && projectId) {
-          // Inbox in-app pour chaque membre + push (opt-in via notifyUser)
-          await Promise.all(
-            projectMemberIds.map((uid) =>
-              notifyUser({
-                userId: uid,
-                actorId: meId,
-                type: 'message_received',
-                title: `[Équipe] ${themProfile?.name || 'Projet'}`,
-                body: `${myName}: ${textToSend.slice(0, 120)}`,
-                route: `/chat/project-${projectId}`,
-                refType: 'project',
-                refId: projectId,
-                push: true,
-                throttle: false,
-              })
-            )
-          );
-          // Fallback push tokens déjà chargés (si notify n’a pas de token)
-          if (projectTokens.length && projectMemberIds.length === 0) {
-            const { sendPushNotification } = await import('../../lib/notifications');
-            projectTokens.forEach((token) => {
-              void sendPushNotification(
-                token,
-                `[Équipe] ${themProfile?.name || 'Projet'}`,
-                `${myName}: ${textToSend}`,
-                { route: `/chat/project-${projectId}` }
-              );
+          const members = projectMemberIds.filter((uid) => uid && uid !== meId);
+          if (members.length) {
+            void notifyMany(members, {
+              actorId: meId,
+              type: 'message_received',
+              title: `[Équipe] ${themProfile?.name || 'Projet'}`,
+              body: `${myName}: ${textToSend.slice(0, 120)}`,
+              route: `/chat/project-${projectId}`,
+              refType: 'project',
+              refId: projectId,
+              push: true,
+              throttle: false,
             });
           }
-        } else if (chatId) {
-          await notifyUser({
+        } else if (chatId && chatId !== meId) {
+          void notifyUser({
             userId: chatId,
             actorId: meId,
             type: 'message_received',
@@ -584,7 +563,11 @@ export default function ChatRoomScreen() {
   }
 
   return (
-    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
+    <SafeAreaView
+      style={{ backgroundColor: colors.bg }}
+      className="flex-1"
+      edges={['top', 'left', 'right']}
+    >
       {/* Header thread — style messenger : retour nu + avatar + nom */}
       <View
         style={{
@@ -699,18 +682,16 @@ export default function ChatRoomScreen() {
         </View>
       )}
 
-      {/* Keyboard Avoiding Wrapper */}
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-        className="flex-1"
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
+      {/* Keyboard : barre de saisie reste visible au-dessus du clavier */}
+      <KeyboardSafe className="flex-1" offset={0}>
         {/* Messages Thread */}
-        <ScrollView 
+        <ScrollView
           ref={scrollViewRef}
           className="flex-1 px-4 py-4"
           contentContainerStyle={{ gap: 16, paddingBottom: 24 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           onScroll={handleChatScroll}
           scrollEventThrottle={16}
           onContentSizeChange={() => {
@@ -819,29 +800,42 @@ export default function ChatRoomScreen() {
           })}
         </ScrollView>
 
-        {/* Input Bar */}
-        <View style={{ backgroundColor: colors.nav, borderTopColor: colors.border }} className="flex-row items-center p-4 border-t gap-3">
-          <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="flex-1 flex-row items-center border rounded-2xl px-4 h-12">
+        {/* Input Bar — padding bas = safe area (clavier géré par KeyboardSafe + resize) */}
+        <View
+          style={{
+            backgroundColor: colors.nav,
+            borderTopColor: colors.border,
+            paddingBottom: Math.max(insets.bottom, 10),
+          }}
+          className="flex-row items-center px-4 pt-3 border-t gap-3"
+        >
+          <View
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="flex-1 flex-row items-center border rounded-2xl px-4 h-12"
+          >
             <TextInput
               placeholder="Écrire votre message..."
               placeholderTextColor={colors.textSecondary}
               value={inputMessage}
               onChangeText={setInputMessage}
               onSubmitEditing={handleSendMessage}
-              style={{ color: colors.text }} className="flex-1 font-inter text-sm h-full"
+              returnKeyType="send"
+              blurOnSubmit={false}
+              style={{ color: colors.text }}
+              className="flex-1 font-inter text-sm h-full"
             />
           </View>
 
-          {/* Send Action */}
-          <Pressable 
+          <Pressable
             onPress={handleSendMessage}
             className="w-12 h-12 rounded-xl bg-turmeric items-center justify-center active:opacity-90"
+            accessibilityRole="button"
+            accessibilityLabel="Envoyer le message"
           >
             <Send size={18} color="#0D0B05" style={{ transform: [{ rotate: '30deg' }] }} />
           </Pressable>
         </View>
-
-      </KeyboardAvoidingView>
+      </KeyboardSafe>
 
       {/* Custom Alert Modal */}
       {modalVisible && (

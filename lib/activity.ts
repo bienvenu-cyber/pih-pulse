@@ -13,7 +13,9 @@ import { sendPushBatch, type ExpoPushMessage } from './notifications';
 import { supabase } from './supabase';
 
 /**
- * Push serveur (Edge) avec fallback Expo client.
+ * Push serveur (Edge) + fallback Expo client.
+ * Important : si l’Edge répond OK mais `sent: 0` (tokens absents côté service,
+ * ou function stub), on retente côté client — ne jamais `return` trop tôt.
  * Ne bloque jamais le flux notif in-app.
  */
 async function dispatchPush(opts: {
@@ -25,8 +27,9 @@ async function dispatchPush(opts: {
   const userIds = Array.from(new Set(opts.userIds.filter(Boolean))).slice(0, 100);
   if (!userIds.length) return;
 
+  let edgeSent = 0;
   try {
-    const { error } = await supabase.functions.invoke('send-push', {
+    const { data, error } = await supabase.functions.invoke('send-push', {
       body: {
         userIds,
         title: opts.title,
@@ -34,14 +37,18 @@ async function dispatchPush(opts: {
         data: opts.data || {},
       },
     });
-    if (!error) return;
-    // Function not deployed / network → fallback
-    console.warn('[push] edge fallback:', error.message);
+    if (!error && data && typeof data === 'object') {
+      edgeSent = Number((data as { sent?: number }).sent) || 0;
+      if (edgeSent > 0) return;
+      // sent:0 → tokens manquants côté edge, on retente client
+    } else if (error) {
+      console.warn('[push] edge:', error.message);
+    }
   } catch (e) {
     console.warn('[push] edge unavailable, client fallback', e);
   }
 
-  // Fallback client : fetch tokens + Expo batch
+  // Fallback / complément client : tokens lisibles (profiles public) + Expo API
   try {
     const { data: profiles } = await supabase
       .from('profiles')
@@ -51,16 +58,26 @@ async function dispatchPush(opts: {
     const messages: ExpoPushMessage[] = [];
     (profiles || []).forEach((p: any) => {
       if (p.push_enabled === false) return;
-      if (!p.expo_push_token) return;
+      const token = p.expo_push_token;
+      if (!token || typeof token !== 'string' || token.length < 20) return;
       messages.push({
-        to: p.expo_push_token,
+        to: token,
         title: opts.title,
         body: opts.body,
         data: opts.data,
         sound: 'default',
+        channelId: 'default',
+        priority: 'high',
       });
     });
-    if (messages.length) await sendPushBatch(messages);
+    if (messages.length) {
+      const result = await sendPushBatch(messages);
+      if (__DEV__) {
+        console.log('[push] client sent', messages.length, 'edgeSent=', edgeSent, result);
+      }
+    } else if (__DEV__) {
+      console.warn('[push] no tokens for users', userIds, 'edgeSent=', edgeSent);
+    }
   } catch (e) {
     console.warn('[push] client fallback failed:', e);
   }
@@ -195,33 +212,36 @@ export async function notifyUser(params: NotifyParams): Promise<string | null> {
 
   if (!push) return data?.id ?? null;
 
-  try {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('expo_push_token, push_enabled, reminders_enabled')
-      .eq('id', userId)
-      .maybeSingle();
+  // Push en fire-and-forget : n’empêche pas l’UI si Expo/Edge est lent
+  void (async () => {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('expo_push_token, push_enabled, reminders_enabled')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (profile?.push_enabled === false) return data?.id ?? null;
+      if (profile?.push_enabled === false) return;
 
-    if (REMINDER_TYPES.has(type) && profile?.reminders_enabled === false) {
-      return data?.id ?? null;
+      if (REMINDER_TYPES.has(type) && profile?.reminders_enabled === false) {
+        return;
+      }
+
+      await dispatchPush({
+        userIds: [userId],
+        title,
+        body,
+        data: {
+          route: route || undefined,
+          type,
+          notificationId: data?.id,
+          refId: refId || undefined,
+        },
+      });
+    } catch (e) {
+      console.warn('push notify failed:', e);
     }
-
-    // S1 : Edge push (fallback client dans dispatchPush si function absente)
-    await dispatchPush({
-      userIds: [userId],
-      title,
-      body,
-      data: {
-        route: route || undefined,
-        type,
-        refId: refId || undefined,
-      },
-    });
-  } catch (e) {
-    console.warn('push notify failed:', e);
-  }
+  })();
 
   return data?.id ?? null;
 }

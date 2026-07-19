@@ -100,22 +100,25 @@ Deno.serve(async (req) => {
       body: string;
       data?: Record<string, unknown>;
       sound: 'default';
+      channelId: string;
+      priority: 'high';
     }[] = [];
 
     for (const p of profiles || []) {
       if ((p as any).push_enabled === false) continue;
       const token = (p as any).expo_push_token as string | null;
-      if (!token || typeof token !== 'string') continue;
+      if (!token || typeof token !== 'string' || token.length < 20) continue;
       messages.push({
         to: token,
         title,
         body,
         data: {
           ...(payload.data || {}),
-          // audit léger
           sentBy: user.id,
         },
         sound: 'default',
+        channelId: 'default',
+        priority: 'high',
       });
     }
 

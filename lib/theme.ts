@@ -1,9 +1,12 @@
 /**
  * Palette unique pour les 3 flavors PIH Pulse.
  * Source de vérité UI — à utiliser via useThemeFlavor().
+ *
+ * IDs stables : `malt` | `dark` | `light`
+ * (legacy storage `oled` → migré vers `dark`)
  */
 
-export type ThemeFlavor = 'malt' | 'oled' | 'light';
+export type ThemeFlavor = 'malt' | 'dark' | 'light';
 
 export interface ThemeColors {
   /** Fond d'écran principal */
@@ -32,7 +35,22 @@ export interface ThemeColors {
   onTurmeric: string;
   /** Fond bouton secondaire */
   buttonSecondary: string;
+  /**
+   * Barres de skeleton (shimmer) — doit rester lisible en mode clair
+   * (jamais un gris/malt sombre collé sur fond papier).
+   */
+  skeleton: string;
 }
+
+/** Labels UI (Apparence) */
+export const THEME_FLAVOR_LABELS: Record<ThemeFlavor, string> = {
+  light: 'Clair',
+  malt: 'Malt',
+  dark: 'Sombre',
+};
+
+/** Thème par défaut (nouveaux installs + fallback) */
+export const DEFAULT_THEME_FLAVOR: ThemeFlavor = 'light';
 
 const LIGHT: ThemeColors = {
   bg: '#F8F5EC',
@@ -45,13 +63,17 @@ const LIGHT: ThemeColors = {
   turmeric: '#D9A000',
   kaki: '#5A9A58',
   corail: '#E8634A',
-  headerBg: 'rgba(248, 245, 236, 0.86)',
-  tabBarBg: 'rgba(248, 245, 236, 0.92)',
+  headerBg: 'rgba(248, 245, 236, 0.92)',
+  // Opaque tab bar — évite artefacts / ripple gris sur Android
+  tabBarBg: '#F8F5EC',
   onTurmeric: '#0D0B05',
   buttonSecondary: '#F0EAD6',
+  // Beige doux (pas de marron/malt sombre)
+  skeleton: '#E8E0CC',
 };
 
-const OLED: ThemeColors = {
+/** Ancien « OLED » — noir absolu, label UI « Sombre » */
+const DARK: ThemeColors = {
   bg: '#000000',
   card: '#0A0A0A',
   nav: '#000000',
@@ -63,9 +85,10 @@ const OLED: ThemeColors = {
   kaki: '#7CB87A',
   corail: '#E8634A',
   headerBg: 'rgba(0, 0, 0, 0.82)',
-  tabBarBg: 'rgba(0, 0, 0, 0.9)',
+  tabBarBg: '#000000',
   onTurmeric: '#0D0B05',
   buttonSecondary: '#0A0A0A',
+  skeleton: '#1A1A1A',
 };
 
 const MALT: ThemeColors = {
@@ -80,17 +103,27 @@ const MALT: ThemeColors = {
   kaki: '#7CB87A',
   corail: '#E8634A',
   headerBg: 'rgba(13, 11, 5, 0.84)',
-  tabBarBg: 'rgba(8, 7, 3, 0.9)',
+  tabBarBg: '#080703',
   onTurmeric: '#0D0B05',
   buttonSecondary: '#0D0B05',
+  skeleton: '#2A2418',
 };
 
 export function getThemeColors(flavor: ThemeFlavor): ThemeColors {
   if (flavor === 'light') return LIGHT;
-  if (flavor === 'oled') return OLED;
+  if (flavor === 'dark') return DARK;
   return MALT;
 }
 
 export function isThemeFlavor(val: string | null | undefined): val is ThemeFlavor {
-  return val === 'malt' || val === 'oled' || val === 'light';
+  return val === 'malt' || val === 'dark' || val === 'light';
+}
+
+/**
+ * Normalise une valeur stockée (inclut legacy `oled` → `dark`).
+ */
+export function normalizeThemeFlavor(val: string | null | undefined): ThemeFlavor | null {
+  if (val === 'oled') return 'dark';
+  if (isThemeFlavor(val)) return val;
+  return null;
 }

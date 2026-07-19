@@ -1,5 +1,6 @@
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
@@ -18,47 +19,84 @@ try {
   console.warn('expo-notifications native module not available (old dev build):', e);
 }
 
+function getExpoProjectId(): string | undefined {
+  return (
+    Constants.expoConfig?.extra?.eas?.projectId ||
+    Constants.easConfig?.projectId ||
+    '08e66b61-f9d2-4951-aef5-d6e62f60f922'
+  );
+}
+
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === 'web') {
     return null;
   }
 
   if (!Device.isDevice) {
-    console.log('Must use physical device for Push Notifications');
+    console.log('[push] Must use physical device for Push Notifications');
     return null;
   }
 
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    
+
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    
+
     if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
+      console.log('[push] Permission not granted');
       return null;
     }
 
-    // Get the Expo push token
-    const token = (await Notifications.getExpoPushTokenAsync({
-      projectId: '08e66b61-f9d2-4951-aef5-d6e62f60f922'
-    })).data;
-
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
+        name: 'PIH Pulse',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FFBE0B', // Turmeric color
+        lightColor: '#FFBE0B',
+        sound: 'default',
       });
     }
 
+    const projectId = getExpoProjectId();
+    const token = (
+      await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : undefined
+      )
+    ).data;
+
+    if (__DEV__) console.log('[push] token registered', token?.slice(0, 28) + '…');
     return token;
   } catch (error) {
-    console.error('Error registering for push notifications:', error);
+    console.error('[push] register error:', error);
+    return null;
+  }
+}
+
+/**
+ * Enregistre le token si push non désactivé (re-sync au cold start / foreground).
+ */
+export async function ensurePushRegistration(userId: string): Promise<string | null> {
+  if (!userId || Platform.OS === 'web') return null;
+  try {
+    const { data: pref } = await supabase
+      .from('profiles')
+      .select('push_enabled, expo_push_token')
+      .eq('id', userId)
+      .maybeSingle();
+    if (pref?.push_enabled === false) return null;
+
+    const token = await registerForPushNotificationsAsync();
+    if (!token) return null;
+    if (pref?.expo_push_token !== token) {
+      await savePushToken(userId, token);
+    }
+    return token;
+  } catch (e) {
+    console.warn('[push] ensurePushRegistration:', e);
     return null;
   }
 }
@@ -152,6 +190,9 @@ export type ExpoPushMessage = {
   data?: Record<string, unknown>;
   sound?: 'default' | null;
   badge?: number;
+  /** Android channel (doit matcher setNotificationChannelAsync) */
+  channelId?: string;
+  priority?: 'default' | 'normal' | 'high';
 };
 
 /** 1 notif (compat) */
@@ -184,16 +225,30 @@ export async function sendPushBatch(
 
     const results = [];
     for (const chunk of chunks) {
+      const payload = chunk.map((m) => ({
+        to: m.to,
+        title: m.title,
+        body: m.body,
+        data: m.data || {},
+        sound: m.sound ?? 'default',
+        badge: m.badge,
+        channelId: m.channelId || 'default',
+        priority: m.priority || 'high',
+      }));
       const response = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
         headers: {
           Accept: 'application/json',
-          'Accept-encoding': 'gzip, deflate',
+          'Accept-Encoding': 'gzip, deflate',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(chunk),
+        body: JSON.stringify(payload),
       });
-      results.push(await response.json());
+      const json = await response.json();
+      if (__DEV__ && !response.ok) {
+        console.warn('[push] Expo API error', response.status, json);
+      }
+      results.push(json);
     }
     return results;
   } catch (error) {

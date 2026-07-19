@@ -1,3 +1,4 @@
+import { Target } from 'lucide-react-native';
 import { Text, View } from 'react-native';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
 
@@ -6,74 +7,90 @@ type Props = {
   online?: boolean;
   /** Dispo pour missions */
   available?: boolean;
-  /** Rôle / label métier (optionnel, même ligne méta) */
+  /** Rôle / label métier (optionnel) */
   roleLabel?: string | null;
   /** Variante compacte (listes) */
   compact?: boolean;
+  /**
+   * Si true, n’affiche pas le point « en ligne » ici
+   * (déjà sur l’avatar via PresenceDot).
+   */
+  hideOnlineDot?: boolean;
 };
 
 /**
- * Statuts profil premium / épurés :
- * - pas de chips kaki bordés « Dispo / En ligne »
- * - présence = point discret (souvent sur l’avatar via PresenceDot)
- * - dispo + rôle = ligne méta texte fine
+ * Statuts profil — icônes discrètes, pas de libellés « En ligne / Dispo ».
+ * - rôle = texte
+ * - dispo missions = icône Target kaki
+ * - en ligne = point vert (sauf si déjà sur l’avatar)
  */
 export function ProfileStatusMeta({
   online,
   available,
   roleLabel,
   compact,
+  hideOnlineDot = false,
 }: Props) {
   const { colors } = useThemeFlavor();
-  const parts: string[] = [];
-  if (roleLabel?.trim()) parts.push(roleLabel.trim());
-  if (available) parts.push('Dispo');
-  if (online) parts.push('En ligne');
+  const role = roleLabel?.trim() || '';
+  const showOnline = !!online && !hideOnlineDot;
+  const showAvailable = !!available;
+  const iconSize = compact ? 11 : 12;
+  const gap = compact ? 6 : 8;
 
-  if (!parts.length) return null;
+  if (!role && !showOnline && !showAvailable) return null;
 
   return (
     <View
       className="flex-row flex-wrap items-center"
-      style={{ marginTop: compact ? 2 : 4, gap: 0 }}
+      style={{ marginTop: compact ? 2 : 4, gap }}
+      accessibilityLabel={[
+        role || null,
+        showAvailable ? 'Disponible pour missions' : null,
+        showOnline ? 'En ligne' : null,
+      ]
+        .filter(Boolean)
+        .join(', ')}
     >
-      {parts.map((part, i) => {
-        const isLive = part === 'En ligne';
-        const isDispo = part === 'Dispo';
-        const color = isLive || isDispo ? colors.kaki : colors.textSecondary;
+      {role ? (
+        <Text
+          style={{ color: colors.textSecondary, letterSpacing: 0.4 }}
+          className={`font-inter ${compact ? 'text-[10px]' : 'text-[11px]'} font-medium uppercase`}
+          numberOfLines={1}
+        >
+          {role}
+        </Text>
+      ) : null}
 
-        return (
-          <View key={`${part}-${i}`} className="flex-row items-center">
-            {i > 0 ? (
-              <Text
-                style={{ color: colors.border, marginHorizontal: 6 }}
-                className="font-inter text-[10px]"
-              >
-                ·
-              </Text>
-            ) : null}
-            {isLive ? (
-              <View
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: 3,
-                  backgroundColor: colors.kaki,
-                  marginRight: 5,
-                }}
-              />
-            ) : null}
-            <Text
-              style={{ color, letterSpacing: isDispo || isLive ? 0.2 : 0.4 }}
-              className={`font-inter ${compact ? 'text-[10px]' : 'text-[11px]'} ${
-                isDispo || isLive ? 'font-semibold' : 'font-medium'
-              } ${!isDispo && !isLive ? 'uppercase' : ''}`}
-            >
-              {part}
-            </Text>
-          </View>
-        );
-      })}
+      {(showOnline || showAvailable) && role ? (
+        <Text style={{ color: colors.border }} className="font-inter text-[10px]">
+          ·
+        </Text>
+      ) : null}
+
+      {showOnline || showAvailable ? (
+        <View className="flex-row items-center" style={{ gap: compact ? 7 : 8 }}>
+          {showOnline ? (
+            <View
+              accessibilityLabel="En ligne"
+              style={{
+                width: compact ? 7 : 8,
+                height: compact ? 7 : 8,
+                borderRadius: 4,
+                backgroundColor: colors.kaki,
+              }}
+            />
+          ) : null}
+          {showAvailable ? (
+            <Target
+              size={iconSize}
+              color={colors.kaki}
+              strokeWidth={2.4}
+              accessibilityLabel="Disponible pour missions"
+            />
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -97,6 +114,7 @@ export function PresenceDot({
   return (
     <View
       pointerEvents="none"
+      accessibilityLabel="En ligne"
       style={{
         position: 'absolute',
         left: 1,
@@ -109,5 +127,47 @@ export function PresenceDot({
         borderColor: borderColor || colors.card,
       }}
     />
+  );
+}
+
+/**
+ * Rangée d’icônes statut pour listes (Talents, etc.) — sans texte.
+ */
+export function ProfileStatusIcons({
+  online,
+  available,
+  size = 14,
+}: {
+  online?: boolean;
+  available?: boolean;
+  size?: number;
+}) {
+  const { colors } = useThemeFlavor();
+  if (!online && !available) return null;
+
+  return (
+    <View
+      className="flex-row items-center gap-2.5"
+      accessibilityLabel={[
+        online ? 'En ligne' : null,
+        available ? 'Disponible pour missions' : null,
+      ]
+        .filter(Boolean)
+        .join(', ')}
+    >
+      {online ? (
+        <View
+          style={{
+            width: size * 0.55,
+            height: size * 0.55,
+            borderRadius: size,
+            backgroundColor: colors.kaki,
+          }}
+        />
+      ) : null}
+      {available ? (
+        <Target size={size} color={colors.kaki} strokeWidth={2.3} />
+      ) : null}
+    </View>
   );
 }

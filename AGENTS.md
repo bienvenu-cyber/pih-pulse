@@ -17,9 +17,9 @@ Ce fichier contient les règles, contraintes et instructions que tout agent IA d
 ## 🎨 Charte Graphique Validée ("Premium Turmeric & Malt")
 
 L'application supporte **3 thèmes** sélectionnables par l'utilisateur dans le profil :
-1. **Malt Premium** (Sombre Doré) - Thème par défaut
-2. **Noir Absolu OLED** (Sombre Noir)
-3. **Papier & Or** (Mode Clair)
+1. **Papier & Or** (Clair) — **thème par défaut**
+2. **Malt Premium** (Sombre doré)
+3. **Sombre** (Noir absolu, ex-OLED)
 
 * **Couleurs du Thème (Tailwind Config) :**
   - Fond de l'app (Malt profond) : `bg-malt-deep` (`#0D0B05`)
@@ -33,7 +33,9 @@ L'application supporte **3 thèmes** sélectionnables par l'utilisateur dans le 
   - Danger / Erreurs : `text-corail` / `bg-corail/15` (`#E8634A`)
 
 * **Gestion des Thèmes :**
-  - Utiliser le hook `themeFlavor` avec valeurs : `'malt' | 'oled' | 'light'`
+  - Utiliser le hook `useThemeFlavor` avec valeurs : `'light' | 'malt' | 'dark'`
+  - Legacy storage `oled` migré automatiquement vers `dark`
+  - Défaut : `'light'` (Clair)
   - Le thème est sauvegardé dans SecureStore (mobile) ou localStorage (web)
   - Les couleurs s'adaptent dynamiquement selon le thème sélectionné
 
@@ -69,10 +71,11 @@ L'application supporte **3 thèmes** sélectionnables par l'utilisateur dans le 
 ## 🎬 Splash screen
 
 * Spec complète : [docs/SPLASH.md](docs/SPLASH.md).
-* Natif : `icon.png` centré + fond clair/sombre système (`app.json` / expo-splash-screen).
-* JS : `BrandedSplash` = logo centré + **from Beyond** en bas.
+* **Un seul branding** : logo + **from Beyond** (natif et JS).
+* Natif : `splash-light.png` / `splash-dark.png` full-screen (`enableFullScreenImage_legacy`).
+* JS : `BrandedSplash` = même layout (logo centré + from Beyond).
 * Après regen d’icônes : `python3 scripts/generate-splash.py` puis **rebuild EAS**.
-* Pas de fichier `splash-icon.png` séparé — uniquement `icon.png` + maquettes `splash-dark.png` / `splash-light.png`.
+* Ne pas reconfigurer le natif sur `icon.png` seul (ancien logo-only).
 
 ## 📖 Références de Conception
 

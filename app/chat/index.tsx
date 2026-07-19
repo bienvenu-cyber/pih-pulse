@@ -162,31 +162,47 @@ export default function ChatInboxScreen() {
           (a, b) => (b.sortAt || 0) - (a.sortAt || 0)
         );
         setConversations(convList);
+      }
 
-        // Suggestions
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, role, avatar_url')
-          .neq('id', user.id)
-          .order('reputation_points', { ascending: false })
-          .limit(12);
+      // Peers déjà en conversation DM → exclus des Suggestions
+      const existingPeerIds = new Set<string>();
+      const { data: dmRows } = await supabase
+        .from('messages')
+        .select('sender_id, receiver_id')
+        .is('project_id', null)
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .limit(500);
 
-        if (profiles) {
-          setSuggestions(
-            profiles
-              .filter((p) => !convMap.has(p.id))
-              .map((p) => {
-                const name = p.full_name || 'Talent';
-                return {
-                  id: p.id,
-                  name,
-                  role: formatRoleLabel(p.role),
-                  initials: getInitials(name),
-                  avatarUrl: p.avatar_url || null,
-                };
-              })
-          );
-        }
+      (dmRows || []).forEach((m: { sender_id: string; receiver_id: string | null }) => {
+        if (m.sender_id === user.id && m.receiver_id) existingPeerIds.add(m.receiver_id);
+        if (m.receiver_id === user.id && m.sender_id) existingPeerIds.add(m.sender_id);
+      });
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, role, avatar_url')
+        .neq('id', user.id)
+        .order('reputation_points', { ascending: false })
+        .limit(24);
+
+      if (profiles) {
+        setSuggestions(
+          profiles
+            .filter((p) => !existingPeerIds.has(p.id))
+            .slice(0, 8)
+            .map((p) => {
+              const name = p.full_name || 'Talent';
+              return {
+                id: p.id,
+                name,
+                role: formatRoleLabel(p.role),
+                initials: getInitials(name),
+                avatarUrl: p.avatar_url || null,
+              };
+            })
+        );
+      } else {
+        setSuggestions([]);
       }
     } catch (err) {
       console.error(err);

@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ThemedStackHeader from '../../components/ThemedStackHeader';
+import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { supabase } from '../../lib/supabase';
@@ -201,13 +201,11 @@ export default function ProfileSecurityScreen() {
   return (
     <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
       <ThemedStackHeader title="Sécurité" onBack={() => router.back()} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1"
-      >
+      <KeyboardSafe className="flex-1" offset={0}>
         <ScrollView
           contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {error ? <Text className="text-corail font-inter text-xs">{error}</Text> : null}
           {msg ? (
@@ -370,7 +368,7 @@ export default function ProfileSecurityScreen() {
             </Pressable>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafe>
     </SafeAreaView>
   );
 }

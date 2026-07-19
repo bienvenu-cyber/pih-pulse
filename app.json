@@ -27,6 +27,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.ben229.PIHPULSE",
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
@@ -45,14 +46,14 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#F8F5EC",
+          "image": "./assets/images/splash-light.png",
           "dark": {
-            "image": "./assets/images/icon.png",
+            "image": "./assets/images/splash-dark.png",
             "backgroundColor": "#0D0B05"
-          }
+          },
+          "backgroundColor": "#F8F5EC",
+          "resizeMode": "contain",
+          "enableFullScreenImage_legacy": true
         }
       ],
       "expo-secure-store",
@@ -65,7 +66,16 @@
       ],
       "expo-image",
       "expo-video",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#0D0B05",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

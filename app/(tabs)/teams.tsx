@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Award, Search, Send, Users } from 'lucide-react-native';
+import { Award, Search, Users } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
   FlatList,
@@ -14,8 +14,10 @@ import CollapsibleHeader, {
   useCollapsibleHeaderOffset,
   useTabListBottomPadding,
 } from '../../components/CollapsibleHeader';
+import { PresenceDot, ProfileStatusIcons } from '../../components/ProfileStatus';
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
+import { isUserOnline } from '../../components/ProfileToggles';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatLevelBadge, getLevelProgress } from '../../lib/reputation';
 import { supabase } from '../../lib/supabase';
@@ -60,7 +62,7 @@ export default function TeamsScreen() {
       const full = await supabase
         .from('profiles')
         .select(
-          'id, full_name, role, skills, reputation_points, avatar_url, bio, available_for_missions'
+          'id, full_name, role, skills, reputation_points, avatar_url, bio, available_for_missions, show_online_presence, last_seen_at'
         )
         .order('reputation_points', { ascending: false })
         .limit(80);
@@ -105,6 +107,7 @@ export default function TeamsScreen() {
             levelLabel: formatLevelBadge(getLevelProgress(prof.reputation_points ?? 0).level),
             // Défaut ON si colonne absente
             available: prof.available_for_missions !== false,
+            online: isUserOnline(prof.show_online_presence, prof.last_seen_at),
           };
         });
         setTalents(formatted);
@@ -201,17 +204,26 @@ export default function TeamsScreen() {
               >
                 <View className="flex-row justify-between items-center">
                   <View className="flex-row items-center gap-3">
-                    <View
-                      style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-                      className="w-12 h-12 rounded-full border items-center justify-center overflow-hidden"
-                    >
-                      {talent.avatarUrl ? (
-                        <Image source={{ uri: talent.avatarUrl }} style={{ width: 48, height: 48 }} />
-                      ) : (
-                        <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
-                          {talent.initials}
-                        </Text>
-                      )}
+                    <View className="relative">
+                      <View
+                        style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                        className="w-12 h-12 rounded-full border items-center justify-center overflow-hidden"
+                      >
+                        {talent.avatarUrl ? (
+                          <Image
+                            source={{ uri: talent.avatarUrl }}
+                            style={{ width: 48, height: 48 }}
+                          />
+                        ) : (
+                          <Text
+                            style={{ color: colors.text }}
+                            className="font-space text-sm font-bold"
+                          >
+                            {talent.initials}
+                          </Text>
+                        )}
+                      </View>
+                      <PresenceDot online={talent.online} size={12} borderColor={colors.card} />
                     </View>
                     <View>
                       <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
@@ -267,24 +279,23 @@ export default function TeamsScreen() {
               <View style={{ backgroundColor: colors.border, opacity: 0.6 }} className="h-[1px]" />
 
               <View className="flex-row justify-between items-center">
-                <Text
-                  style={{ color: talent.available ? colors.kaki : colors.textSecondary }}
-                  className="font-inter text-[10px] font-semibold"
-                >
-                  {talent.available ? 'Dispo missions' : 'Indisponible'}
-                </Text>
+                {/* Icônes statut : point en ligne (avatar) + Target dispo — pas de texte */}
+                <ProfileStatusIcons
+                  online={false}
+                  available={talent.available}
+                  size={14}
+                />
                 <Pressable
                   onPress={() => router.push(`/chat/${talent.id}`)}
                   hitSlop={8}
                   style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-                  className="border flex-row items-center gap-1.5 px-4 py-2 rounded-full active:opacity-80"
+                  className="border px-4 py-2 rounded-full active:opacity-80"
                   accessibilityRole="button"
                   accessibilityLabel={`Contacter ${talent.name}`}
                 >
-                  <Text style={{ color: colors.text }} className="font-inter text-[10px] font-bold">
+                  <Text style={{ color: colors.text }} className="font-inter text-[11px] font-semibold">
                     Contacter
                   </Text>
-                  <Send size={10} color={colors.text} style={{ transform: [{ rotate: '30deg' }] }} />
                 </Pressable>
               </View>
             </View>
