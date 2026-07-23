@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { subscribeUserNotifications } from '../lib/activity';
 import { countMyProjectChatUnread } from '../lib/chatRead';
 import { supabase } from '../lib/supabase';
@@ -25,6 +26,9 @@ export function useUnreadBadges(pollMs = 60_000) {
         if (mountedRef.current) {
           setNotifCount(0);
           setChatCount(0);
+          if (Platform.OS !== 'web') {
+            Notifications.setBadgeCountAsync(0).catch(() => {});
+          }
         }
         return;
       }
@@ -45,8 +49,12 @@ export function useUnreadBadges(pollMs = 60_000) {
       ]);
 
       if (mountedRef.current) {
-        setNotifCount(notifRes.count ?? 0);
+        const nCount = notifRes.count ?? 0;
+        setNotifCount(nCount);
         setChatCount((dmRes.count ?? 0) + projectUnread);
+        if (Platform.OS !== 'web') {
+          Notifications.setBadgeCountAsync(nCount).catch(() => {});
+        }
       }
     } catch {
       /* silent */

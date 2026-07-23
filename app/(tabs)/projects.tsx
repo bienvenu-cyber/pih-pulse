@@ -6,6 +6,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
@@ -20,6 +21,7 @@ import ReplyCountBadge from '../../components/ReplyCountBadge';
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
 import LoadMoreFooter from '../../components/ui/LoadMoreFooter';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
 import { fetchReplyCounts } from '../../lib/replies';
@@ -261,9 +263,9 @@ export default function ProjectsScreen() {
   const listHeader = (
     <View className="gap-3 mb-3">
       <View className="flex-row gap-2">
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="flex-row flex-1 items-center h-12 rounded-xl border px-3 gap-2"
+        <SoftSurface
+          variant="inset"
+          className="flex-row flex-1 items-center h-12 px-3 gap-2"
         >
           <Search size={16} color={colors.textSecondary} />
           <TextInput
@@ -275,7 +277,7 @@ export default function ProjectsScreen() {
             className="flex-1 font-inter text-sm h-full"
             accessibilityLabel="Rechercher un projet"
           />
-        </View>
+        </SoftSurface>
         <Pressable
           onPress={() => router.push('/project/create')}
           accessibilityRole="button"
@@ -386,9 +388,9 @@ export default function ProjectsScreen() {
 
             // View racine (pas Pressable) → évite <button> imbriqués sur web
             return (
-              <View
-                style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                className="rounded-2xl px-4 pt-3.5 pb-2 gap-3 border"
+              <SoftSurface
+                variant="card"
+                className="px-4 pt-3.5 pb-2 gap-3"
               >
                 <PostAuthorHeader
                   authorName={project.authorName}
@@ -466,12 +468,15 @@ export default function ProjectsScreen() {
                 </Pressable>
 
                 <View
-                  style={{ borderTopWidth: 1, borderTopColor: colors.border + '99' }}
-                  className="pt-1"
+                  style={{
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: colors.border + '55',
+                  }}
+                  className="pt-1.5"
                 >
                   <ReactionBar refId={project.id} refType="project" showIdea={showIdea} />
                 </View>
-              </View>
+              </SoftSurface>
             );
           }}
         />

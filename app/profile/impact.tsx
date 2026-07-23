@@ -2,17 +2,20 @@ import { useRouter } from 'expo-router';
 import { TrendingUp } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
   RefreshControl,
   ScrollView,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ThemedStackHeader from '../../components/ThemedStackHeader';
+import { GlassCard } from '../../components/ui/Glass';
+import PressableScale from '../../components/ui/PressableScale';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime } from '../../lib/formatTime';
+import { haptic } from '../../lib/haptics';
 import {
   formatLevelBadge,
   getLevelProgress,
@@ -36,8 +39,12 @@ export default function ImpactHistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (mode: 'replace' | 'refresh' = 'replace') => {
-    if (mode === 'refresh') setRefreshing(true);
-    else setLoading(true);
+    if (mode === 'refresh') {
+      void haptic('light');
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const {
         data: { user },
@@ -82,30 +89,11 @@ export default function ImpactHistoryScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.bg }} edges={['top']}>
-      <View
-        className="flex-row items-center px-4 py-3 border-b"
-        style={{ borderBottomColor: colors.border, backgroundColor: colors.nav }}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="w-10 h-10 rounded-full border items-center justify-center"
-        >
-          <Text style={{ color: colors.text }} className="font-space text-lg">
-            ←
-          </Text>
-        </Pressable>
-        <View className="flex-1 items-center">
-          <Text style={{ color: colors.text }} className="font-space text-base font-bold">
-            Historique Élan
-          </Text>
-        </View>
-        <View className="w-10" />
-      </View>
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.bg }}>
+      <ThemedStackHeader title="Historique Élan" onBack={() => router.back()} />
 
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 12 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 14 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -114,13 +102,7 @@ export default function ImpactHistoryScreen() {
           />
         }
       >
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderColor: colors.border,
-          }}
-          className="border rounded-3xl p-5 gap-3"
-        >
+        <GlassCard className="p-5 gap-3">
           <View className="flex-row items-center gap-3">
             <View
               style={{ backgroundColor: colors.turmeric + '22' }}
@@ -158,18 +140,15 @@ export default function ImpactHistoryScreen() {
               </Text>
             </View>
           ) : null}
-        </View>
+        </GlassCard>
 
         <Text
           style={{ color: colors.textSecondary }}
-          className="font-inter text-[11px] font-bold uppercase tracking-wider mt-1"
+          className="font-inter text-[11px] font-bold uppercase tracking-wider mt-1 px-1"
         >
           Paliers
         </Text>
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl overflow-hidden"
-        >
+        <SoftSurface className="overflow-hidden p-0">
           {REPUTATION_LEVELS.map((lv, idx) => {
             const unlocked = total >= lv.minPoints;
             const current = level.level.id === lv.id;
@@ -180,7 +159,7 @@ export default function ImpactHistoryScreen() {
             return (
               <View
                 key={lv.id}
-                className="flex-row items-center px-4 py-3 gap-3"
+                className="flex-row items-center px-4 py-3.5 gap-3"
                 style={{
                   borderBottomWidth: idx < REPUTATION_LEVELS.length - 1 ? 1 : 0,
                   borderBottomColor: colors.border,
@@ -210,20 +189,17 @@ export default function ImpactHistoryScreen() {
               </View>
             );
           })}
-        </View>
+        </SoftSurface>
 
         <Text
           style={{ color: colors.textSecondary }}
-          className="font-inter text-[11px] font-bold uppercase tracking-wider mt-1"
+          className="font-inter text-[11px] font-bold uppercase tracking-wider mt-1 px-1"
         >
           Mouvements
         </Text>
 
         {logs.length === 0 ? (
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl p-6 items-center"
-          >
+          <SoftSurface className="p-6 items-center">
             <Text style={{ color: colors.text }} className="font-space text-sm font-bold mb-1">
               Aucun mouvement
             </Text>
@@ -233,15 +209,14 @@ export default function ImpactHistoryScreen() {
             >
               Publie un post, rejoins un projet ou complète ton profil pour gagner de l’Élan.
             </Text>
-          </View>
+          </SoftSurface>
         ) : (
           logs.map((log) => {
             const positive = (log.points_changed || 0) >= 0;
             return (
-              <View
+              <SoftSurface
                 key={log.id}
-                style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                className="border rounded-2xl px-4 py-3.5 flex-row items-center gap-3"
+                className="px-4 py-3.5 flex-row items-center gap-3"
               >
                 <View
                   className="min-w-[52px] px-2 py-1.5 rounded-xl items-center"
@@ -265,7 +240,7 @@ export default function ImpactHistoryScreen() {
                     {formatRelativeTime(new Date(log.created_at).getTime())}
                   </Text>
                 </View>
-              </View>
+              </SoftSurface>
             );
           })
         )}

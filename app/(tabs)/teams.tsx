@@ -18,6 +18,7 @@ import { PresenceDot, ProfileStatusIcons } from '../../components/ProfileStatus'
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
 import { isUserOnline } from '../../components/ProfileToggles';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatLevelBadge, getLevelProgress } from '../../lib/reputation';
 import { supabase } from '../../lib/supabase';
@@ -129,9 +130,9 @@ export default function TeamsScreen() {
 
   const listHeader = (
     <View className="mb-3">
-      <View
-        style={{ backgroundColor: colors.card, borderColor: colors.border }}
-        className="flex-row items-center h-12 rounded-xl border px-3 gap-2"
+      <SoftSurface
+        variant="inset"
+        className="flex-row items-center h-12 px-3 gap-2"
       >
         <Search size={16} color={colors.textSecondary} />
         <TextInput
@@ -143,7 +144,7 @@ export default function TeamsScreen() {
           className="flex-1 font-inter text-sm h-full"
           accessibilityLabel="Rechercher un talent"
         />
-      </View>
+      </SoftSurface>
     </View>
   );
 
@@ -192,9 +193,9 @@ export default function TeamsScreen() {
           }
           renderItem={({ item: talent }) => (
             // View racine (pas Pressable) → évite <button> imbriqués sur web
-            <View
-              style={{ backgroundColor: colors.card, borderColor: colors.border }}
-              className="border rounded-3xl p-5 gap-4"
+            <SoftSurface
+              variant="card"
+              className="p-5 gap-4"
             >
               <Pressable
                 onPress={() => router.push(`/profile/${talent.id}`)}
@@ -298,7 +299,7 @@ export default function TeamsScreen() {
                   </Text>
                 </Pressable>
               </View>
-            </View>
+            </SoftSurface>
           )}
         />
       )}

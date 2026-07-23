@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ThemedStackHeader from '../../components/ThemedStackHeader';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 
 const SECTIONS: { title: string; body: string }[] = [
@@ -59,15 +60,14 @@ export default function PrivacyScreen() {
     <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
       <ThemedStackHeader title="Confidentialité" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 14 }}>
-        <Text style={{ color: colors.textSecondary }} className="font-inter text-[12px] leading-5">
+        <Text style={{ color: colors.textSecondary }} className="font-inter text-[12px] leading-5 px-1">
           Politique de confidentialité PIH Pulse — version intégrée à l’application. Une URL
           publique pourra être publiée pour les stores (voir SHIP.md).
         </Text>
         {SECTIONS.map((s) => (
-          <View
+          <SoftSurface
             key={s.title}
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl p-4 gap-2"
+            className="p-4 gap-2"
           >
             <Text style={{ color: colors.text }} className="font-space text-[14px] font-bold">
               {s.title}
@@ -75,7 +75,7 @@ export default function PrivacyScreen() {
             <Text style={{ color: colors.textSecondary }} className="font-inter text-[13px] leading-5">
               {s.body}
             </Text>
-          </View>
+          </SoftSurface>
         ))}
       </ScrollView>
     </SafeAreaView>

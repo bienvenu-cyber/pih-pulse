@@ -7,8 +7,8 @@ import { type ReactNode, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
-  Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   type TextInputProps,
@@ -17,8 +17,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeFlavor } from '../../../hooks/useThemeFlavor';
+import { haptic } from '../../../lib/haptics';
+import { GlassSurface } from '../Glass';
 import KeyboardSafe from '../KeyboardSafe';
 import ListSkeleton from '../ListSkeleton';
+import PressableScale from '../PressableScale';
+import SoftSurface from '../SoftSurface';
 
 /* ─── Shell ─────────────────────────────────────────────── */
 
@@ -63,61 +67,71 @@ export function FormScreen({
     );
   }
 
+  const hairline = colors.border + '66';
+
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <View
+    <View className="flex-1" style={{ backgroundColor: colors.bg }}>
+      <GlassSurface
+        intensity="nav"
         style={{
-          backgroundColor: colors.nav,
-          borderBottomColor: colors.border,
-          borderBottomWidth: 1,
+          paddingTop: insets.top,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: hairline,
         }}
-        className="px-4 pb-3 pt-2"
       >
-        <View className="flex-row items-center justify-between">
-          <Pressable
-            onPress={onBack}
-            hitSlop={10}
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="w-10 h-10 rounded-full border items-center justify-center active:opacity-80"
-          >
-            <ArrowLeft size={18} color={colors.text} strokeWidth={2.2} />
-          </Pressable>
-          <View className="flex-1 px-3 items-center">
-            <Text
-              style={{ color: colors.text }}
-              className="font-space text-[16px] font-bold"
-              numberOfLines={1}
+        <View className="px-4 pb-3 pt-2">
+          <View className="flex-row items-center justify-between">
+            <PressableScale
+              onPress={onBack}
+              hitSlop={10}
+              hapticKind="selection"
+              scaleTo={0.92}
+              style={{
+                backgroundColor: colors.card,
+                borderColor: hairline,
+                borderWidth: StyleSheet.hairlineWidth,
+              }}
+              className="w-10 h-10 rounded-full items-center justify-center"
             >
-              {title}
-            </Text>
-            {subtitle ? (
+              <ArrowLeft size={18} color={colors.text} strokeWidth={2.2} />
+            </PressableScale>
+            <View className="flex-1 px-3 items-center">
               <Text
-                style={{ color: colors.textSecondary }}
-                className="font-inter text-[11px] mt-0.5"
+                style={{ color: colors.text }}
+                className="font-space text-[16px] font-bold"
                 numberOfLines={1}
               >
-                {subtitle}
+                {title}
               </Text>
-            ) : null}
+              {subtitle ? (
+                <Text
+                  style={{ color: colors.textSecondary }}
+                  className="font-inter text-[11px] mt-0.5"
+                  numberOfLines={1}
+                >
+                  {subtitle}
+                </Text>
+              ) : null}
+            </View>
+            <View className="min-w-[40px] items-end">{headerRight ?? <View className="w-10" />}</View>
           </View>
-          <View className="min-w-[40px] items-end">{headerRight ?? <View className="w-10" />}</View>
-        </View>
 
-        {typeof progress === 'number' ? (
-          <View
-            style={{ backgroundColor: colors.border }}
-            className="h-1 rounded-full mt-3 overflow-hidden"
-          >
+          {typeof progress === 'number' ? (
             <View
-              style={{
-                backgroundColor: colors.turmeric,
-                width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
-              }}
-              className="h-full rounded-full"
-            />
-          </View>
-        ) : null}
-      </View>
+              style={{ backgroundColor: colors.border }}
+              className="h-1 rounded-full mt-3 overflow-hidden"
+            >
+              <View
+                style={{
+                  backgroundColor: colors.turmeric,
+                  width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
+                }}
+                className="h-full rounded-full"
+              />
+            </View>
+          ) : null}
+        </View>
+      </GlassSurface>
 
       <KeyboardSafe className="flex-1" offset={8}>
         <ScrollView
@@ -138,8 +152,8 @@ export function FormScreen({
           <View
             style={{
               backgroundColor: colors.nav,
-              borderTopColor: colors.border,
-              borderTopWidth: 1,
+              borderTopColor: hairline,
+              borderTopWidth: StyleSheet.hairlineWidth,
               paddingBottom: Math.max(insets.bottom, 12),
             }}
             className="px-4 pt-3"
@@ -169,10 +183,7 @@ export function FormSection({
 }) {
   const { colors } = useThemeFlavor();
   return (
-    <View
-      style={{ backgroundColor: colors.card, borderColor: colors.border }}
-      className="border rounded-3xl p-4 gap-4"
-    >
+    <SoftSurface variant="card" className="p-4 gap-4">
       {(title || stepLabel) && (
         <View className="flex-row items-start gap-3">
           {Icon ? (
@@ -209,7 +220,7 @@ export function FormSection({
         </View>
       )}
       {children}
-    </View>
+    </SoftSurface>
   );
 }
 
@@ -429,9 +440,12 @@ export function ChoiceGrid({
         const accent = opt.color || colors.turmeric;
         const basis = columns === 3 ? '31%' : '47%';
         return (
-          <Pressable
+          <PressableScale
             key={opt.id}
-            onPress={() => onChange(opt.id)}
+            onPress={() => {
+              void haptic('selection');
+              onChange(opt.id);
+            }}
             style={{
               flexBasis: basis,
               flexGrow: 1,
@@ -439,7 +453,7 @@ export function ChoiceGrid({
               borderColor: active ? accent : colors.border,
               borderWidth: active ? 1.5 : 1,
             }}
-            className="rounded-2xl p-3 min-h-[72px] justify-center active:opacity-90"
+            className="rounded-2xl p-3 min-h-[72px] justify-center"
           >
             <Text
               style={{ color: active ? accent : colors.text }}
@@ -456,7 +470,7 @@ export function ChoiceGrid({
                 {opt.description}
               </Text>
             ) : null}
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>
@@ -477,6 +491,7 @@ export function ChipSelect({
   const { colors } = useThemeFlavor();
 
   const toggle = (id: string) => {
+    void haptic('selection');
     if (multi) {
       onChange(values.includes(id) ? values.filter((v) => v !== id) : [...values, id]);
     } else {
@@ -489,14 +504,14 @@ export function ChipSelect({
       {options.map((opt) => {
         const active = values.includes(opt.id);
         return (
-          <Pressable
+          <PressableScale
             key={opt.id}
             onPress={() => toggle(opt.id)}
             style={{
               backgroundColor: active ? colors.turmeric : colors.deep,
               borderColor: active ? colors.turmeric : colors.border,
             }}
-            className="px-3.5 py-2.5 rounded-full border flex-row items-center gap-1.5 active:opacity-90"
+            className="px-3.5 py-2 rounded-full border flex-row items-center gap-1.5"
           >
             <Text
               style={{ color: active ? colors.onTurmeric : colors.textSecondary }}
@@ -505,7 +520,7 @@ export function ChipSelect({
               {opt.label}
             </Text>
             {active ? <Check size={12} color={colors.onTurmeric} strokeWidth={2.8} /> : null}
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>
@@ -606,15 +621,18 @@ export function PrimaryButton({
 
   if (secondary) {
     return (
-      <Pressable
-        onPress={onPress}
+      <PressableScale
+        onPress={() => {
+          void haptic('selection');
+          onPress();
+        }}
         disabled={isDisabled}
         style={{
           backgroundColor: colors.card,
           borderColor: colors.border,
           opacity: isDisabled ? 0.5 : 1,
         }}
-        className="min-h-[52px] rounded-2xl border flex-row items-center justify-center gap-2 active:opacity-85"
+        className="min-h-[50px] rounded-2xl border flex-row items-center justify-center gap-2"
       >
         {loading ? (
           <ActivityIndicator color={colors.text} />
@@ -626,15 +644,18 @@ export function PrimaryButton({
             </Text>
           </>
         )}
-      </Pressable>
+      </PressableScale>
     );
   }
 
   return (
-    <Pressable
-      onPress={onPress}
+    <PressableScale
+      onPress={() => {
+        void haptic('medium');
+        onPress();
+      }}
       disabled={isDisabled}
-      className="min-h-[52px] rounded-2xl flex-row items-center justify-center gap-2 active:opacity-90 bg-turmeric"
+      className="min-h-[50px] rounded-2xl flex-row items-center justify-center gap-2 bg-turmeric"
       style={{ opacity: isDisabled ? 0.45 : 1 }}
     >
       {loading ? (
@@ -648,7 +669,7 @@ export function PrimaryButton({
           {!Icon ? <ChevronRight size={18} color="#0D0B05" strokeWidth={2.4} /> : null}
         </>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 

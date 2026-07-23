@@ -1,17 +1,25 @@
+import { BlurView } from 'expo-blur';
 import * as Notifications from 'expo-notifications';
 import { Tabs, useRouter } from 'expo-router';
 import { Home, Layers, Target, User, Users } from 'lucide-react-native';
 import { useEffect } from 'react';
-import { AppState, Platform, Pressable, type AppStateStatus } from 'react-native';
+import {
+  AppState,
+  Platform,
+  StyleSheet,
+  View,
+  type AppStateStatus,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandedSplash } from '../../components/BrandedSplash';
+import PressableScale from '../../components/ui/PressableScale';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { ensurePushRegistration } from '../../lib/notifications';
 import { PRESENCE_HEARTBEAT_MS, touchLastSeen } from '../../lib/presence';
 import { supabase } from '../../lib/supabase';
 
-/** Tab button sans ripple Android (ombre grise visible en mode clair). */
+/** Tab button glass-friendly : scale + pas de ripple gris Android. */
 function CleanTabButton(props: any) {
   const {
     children,
@@ -26,7 +34,7 @@ function CleanTabButton(props: any) {
   } = props;
 
   return (
-    <Pressable
+    <PressableScale
       {...rest}
       onPress={onPress}
       onLongPress={onLongPress}
@@ -34,11 +42,74 @@ function CleanTabButton(props: any) {
       accessibilityState={accessibilityState}
       accessibilityLabel={accessibilityLabel}
       testID={testID}
+      hapticKind="selection"
+      scaleTo={0.9}
       android_ripple={{ color: 'transparent', borderless: false }}
       style={[{ flex: 1, opacity: 1 }, style]}
     >
       {children}
-    </Pressable>
+    </PressableScale>
+  );
+}
+
+/**
+ * Fond tab bar glass (iOS/Android) + hairline.
+ * Web : solid semi-transparent.
+ */
+function GlassTabBarBackground() {
+  const { isLight, flavor } = useThemeFlavor();
+  const tint = isLight ? 'light' : 'dark';
+  const overlay = isLight
+    ? 'rgba(248, 245, 236, 0.55)'
+    : flavor === 'dark'
+      ? 'rgba(0, 0, 0, 0.55)'
+      : 'rgba(13, 11, 5, 0.62)';
+  const solid = isLight
+    ? 'rgba(248, 245, 236, 0.94)'
+    : flavor === 'dark'
+      ? 'rgba(0, 0, 0, 0.94)'
+      : 'rgba(8, 7, 3, 0.94)';
+  const hairline = isLight ? 'rgba(13, 11, 5, 0.08)' : 'rgba(245, 237, 214, 0.12)';
+
+  if (Platform.OS === 'web') {
+    return (
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: solid,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: hairline,
+          },
+        ]}
+      />
+    );
+  }
+
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 48 : 32}
+        tint={tint}
+        style={StyleSheet.absoluteFill}
+        experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+      />
+      <View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundColor: overlay }]}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: StyleSheet.hairlineWidth,
+          backgroundColor: hairline,
+        }}
+      />
+    </View>
   );
 }
 
@@ -47,7 +118,6 @@ export default function TabLayout() {
   const { colors } = useThemeFlavor();
   const { ready } = useRequireAuth();
   const insets = useSafeAreaInsets();
-  // Icônes seules : barre plus compacte (safe area + zone tactile)
   const tabBarHeight = 50 + Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 6);
 
   useEffect(() => {
@@ -60,7 +130,6 @@ export default function TabLayout() {
           data: { user },
         } = await supabase.auth.getUser();
         if (!user || cancelled) return;
-        // Re-sync token Expo (permission + DB) — requis pour push messages/réactions
         await ensurePushRegistration(user.id);
       } catch (error) {
         console.error('Error setting up push notifications on mount:', error);
@@ -68,7 +137,6 @@ export default function TabLayout() {
     }
     void setupNotifications();
 
-    // Re-register au retour foreground (token peut changer après update OS)
     const onApp = (state: AppStateStatus) => {
       if (state === 'active') void setupNotifications();
     };
@@ -119,7 +187,6 @@ export default function TabLayout() {
     };
   }, [ready]);
 
-  // Même branding splash pendant le check auth (pas de flash spinner).
   if (!ready) {
     return <BrandedSplash />;
   }
@@ -131,13 +198,11 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarActiveTintColor: colors.turmeric,
         tabBarInactiveTintColor: colors.textSecondary,
-        // Pas de fond actif / ripple gris (surtout visible en mode clair Android)
         tabBarActiveBackgroundColor: 'transparent',
         tabBarInactiveBackgroundColor: 'transparent',
         tabBarButton: (props) => <CleanTabButton {...props} />,
+        tabBarBackground: () => <GlassTabBarBackground />,
         tabBarStyle: {
-          backgroundColor: colors.tabBarBg,
-          borderTopColor: colors.border,
           position: 'absolute',
           bottom: 0,
           left: 0,
@@ -145,12 +210,11 @@ export default function TabLayout() {
           height: tabBarHeight,
           paddingBottom: Math.max(insets.bottom, 6),
           paddingTop: 8,
-          borderTopWidth: 1,
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
           elevation: 0,
           shadowOpacity: 0,
           shadowColor: 'transparent',
-          shadowOffset: { width: 0, height: 0 },
-          shadowRadius: 0,
         },
         tabBarItemStyle: {
           paddingTop: 4,

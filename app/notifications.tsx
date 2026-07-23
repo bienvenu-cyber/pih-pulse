@@ -3,7 +3,6 @@
  */
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
-  ArrowLeft,
   AtSign,
   Bell,
   CheckCircle,
@@ -28,11 +27,13 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { ProfileAvatar } from '../components/ProfileAvatar';
+import ThemedStackHeader from '../components/ThemedStackHeader';
 import EmptyState from '../components/ui/EmptyState';
 import ListSkeleton from '../components/ui/ListSkeleton';
 import LoadMoreFooter from '../components/ui/LoadMoreFooter';
+import PressableScale from '../components/ui/PressableScale';
+import SoftSurface from '../components/ui/SoftSurface';
 import { useRequireAuth } from '../hooks/useRequireAuth';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
 import {
@@ -43,6 +44,7 @@ import {
   subscribeUserNotifications,
   type ActivityNotification,
 } from '../lib/activity';
+import { haptic } from '../lib/haptics';
 import { formatRelativeTime } from '../lib/formatTime';
 
 const PAGE_SIZE = 25;
@@ -249,6 +251,7 @@ export default function NotificationsScreen() {
   );
 
   const handlePress = async (notif: ActivityNotification) => {
+    void haptic('light');
     try {
       if (notif.id && !String(notif.id).startsWith('sys-') && !notif.is_read) {
         await markNotificationRead(notif.id);
@@ -265,6 +268,7 @@ export default function NotificationsScreen() {
 
   const handleMarkAll = async () => {
     if (!userId) return;
+    void haptic('medium');
     try {
       await markAllNotificationsRead(userId);
       setList((prev) => prev.map((n) => ({ ...n, is_read: true })));
@@ -290,47 +294,30 @@ export default function NotificationsScreen() {
   ).length;
 
   return (
-    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1" edges={['top']}>
-      <View
-        style={{
-          borderBottomColor: colors.border + '99',
-          borderBottomWidth: 0.5,
-          height: 48,
-          paddingHorizontal: 8,
+    <View style={{ backgroundColor: colors.bg }} className="flex-1">
+      <ThemedStackHeader
+        title={unread > 0 ? `Notifications (${unread})` : 'Notifications'}
+        onBack={() => {
+          if (router.canGoBack()) router.back();
+          else router.replace('/(tabs)');
         }}
-        className="flex-row items-center justify-between"
-      >
-        <Pressable
-          onPress={() => {
-            if (router.canGoBack()) router.back();
-            else router.replace('/(tabs)');
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Retour"
-          hitSlop={10}
-          className="w-11 h-11 items-center justify-center active:opacity-55"
-        >
-          <ArrowLeft size={24} color={colors.text} strokeWidth={1.85} />
-        </Pressable>
-        <Text style={{ color: colors.text }} className="font-space text-[17px] font-bold">
-          Notifications{unread > 0 ? ` (${unread})` : ''}
-        </Text>
-        <Pressable
-          onPress={() => void handleMarkAll()}
-          hitSlop={10}
-          className="min-w-[44px] h-11 items-end justify-center pr-1"
-          accessibilityRole="button"
-          accessibilityLabel="Tout marquer comme lu"
-        >
-          {unread > 0 ? (
-            <Text style={{ color: colors.turmeric }} className="font-inter text-xs font-bold">
-              Tout lu
-            </Text>
-          ) : (
-            <View className="w-11" />
-          )}
-        </Pressable>
-      </View>
+        right={
+          unread > 0 ? (
+            <PressableScale
+              onPress={() => void handleMarkAll()}
+              hitSlop={10}
+              hapticKind="selection"
+              accessibilityRole="button"
+              accessibilityLabel="Tout marquer comme lu"
+              className="h-11 justify-center pr-1"
+            >
+              <Text style={{ color: colors.turmeric }} className="font-inter text-xs font-bold">
+                Tout lu
+              </Text>
+            </PressableScale>
+          ) : undefined
+        }
+      />
 
       {showSkeleton ? (
         <View className="flex-1 px-4 pt-4" style={{ backgroundColor: colors.bg }}>
@@ -344,7 +331,7 @@ export default function NotificationsScreen() {
             padding: 16,
             paddingBottom: 40,
             flexGrow: 1,
-            gap: 10,
+            gap: 8,
           }}
           showsVerticalScrollIndicator={false}
           onEndReached={onEndReached}
@@ -393,11 +380,12 @@ export default function NotificationsScreen() {
                 onPress={() => void handlePress(notif)}
                 accessibilityRole="button"
                 accessibilityLabel={`${notif.title || 'Notification'}. ${notif.body || ''}`}
-                style={{
-                  backgroundColor: colors.card,
-                  borderColor: unreadDot ? colors.turmeric + '55' : colors.border,
-                }}
-                className="flex-row items-start border p-4 rounded-2xl gap-3 active:opacity-95"
+                className="active:opacity-95"
+              >
+              <SoftSurface
+                variant="row"
+                accent={unreadDot}
+                className="flex-row items-start p-3.5 gap-3"
               >
                 <View className="mt-0.5">
                   {avatar ? (
@@ -411,8 +399,8 @@ export default function NotificationsScreen() {
                     />
                   ) : (
                     <View
-                      style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-                      className="w-10 h-10 rounded-xl border items-center justify-center"
+                      style={{ backgroundColor: colors.deep }}
+                      className="w-10 h-10 rounded-xl items-center justify-center"
                     >
                       <Icon size={16} color={iconColor} />
                     </View>
@@ -449,11 +437,12 @@ export default function NotificationsScreen() {
                     <View className="self-start mt-1 w-1.5 h-1.5 rounded-full bg-turmeric" />
                   ) : null}
                 </View>
+              </SoftSurface>
               </Pressable>
             );
           }}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }

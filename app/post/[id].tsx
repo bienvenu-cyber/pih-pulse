@@ -8,16 +8,19 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import MediaCarousel from '../../components/MediaCarousel';
 import PostAuthorHeader from '../../components/PostAuthorHeader';
 import ReactionBar from '../../components/ReactionBar';
 import ReplySection from '../../components/ReplySection';
+import ThemedStackHeader from '../../components/ThemedStackHeader';
 import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import PressableScale from '../../components/ui/PressableScale';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
 import { deleteHubPost, fetchPostById, postCaption, type HubPost } from '../../lib/posts';
@@ -104,35 +107,24 @@ export default function PostDetailScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.bg }} edges={['top']}>
-      <View
-        className="flex-row items-center gap-3 px-4 py-3 border-b"
-        style={{ borderBottomColor: colors.border, backgroundColor: colors.nav }}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          className="w-10 h-10 rounded-xl items-center justify-center active:opacity-70"
-          style={{ backgroundColor: colors.card }}
-        >
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.2} />
-        </Pressable>
-        <Text style={{ color: colors.text }} className="font-space text-base font-bold flex-1">
-          Post
-        </Text>
-        {isOwner ? (
-          <Pressable
-            onPress={() => setMenuOpen(true)}
-            hitSlop={10}
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="w-10 h-10 rounded-xl border items-center justify-center"
-          >
-            <MoreHorizontal size={18} color={colors.text} />
-          </Pressable>
-        ) : (
-          <View className="w-10" />
-        )}
-      </View>
+    <View className="flex-1" style={{ backgroundColor: colors.bg }}>
+      <ThemedStackHeader
+        title="Post"
+        onBack={() => router.back()}
+        right={
+          isOwner ? (
+            <PressableScale
+              onPress={() => setMenuOpen(true)}
+              hitSlop={10}
+              hapticKind="selection"
+              scaleTo={0.9}
+              className="w-11 h-11 items-center justify-center"
+            >
+              <MoreHorizontal size={20} color={colors.text} />
+            </PressableScale>
+          ) : undefined
+        }
+      />
 
       <KeyboardSafe className="flex-1" offset={0}>
       <ScrollView
@@ -162,10 +154,7 @@ export default function PostDetailScreen() {
             </Text>
           </View>
         ) : (
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl px-4 pt-3.5 pb-2 gap-3"
-          >
+          <SoftSurface variant="card" className="px-4 pt-3.5 pb-2 gap-3">
             <PostAuthorHeader
               authorName={post.author?.full_name || 'Membre PIH'}
               authorId={post.author_id}
@@ -194,8 +183,8 @@ export default function PostDetailScreen() {
             {post.project?.id ? (
               <Pressable
                 onPress={() => router.push(`/project/${post.project!.id}`)}
-                style={{ backgroundColor: colors.bg, borderColor: colors.border }}
-                className="border rounded-xl px-3 py-2.5 flex-row items-center gap-2 active:opacity-80"
+                style={{ backgroundColor: colors.deep }}
+                className="rounded-xl px-3 py-2.5 flex-row items-center gap-2 active:opacity-80"
               >
                 <Layers size={14} color={colors.turmeric} strokeWidth={2.2} />
                 <Text style={{ color: colors.textSecondary }} className="font-inter text-xs flex-1">
@@ -209,11 +198,11 @@ export default function PostDetailScreen() {
 
             <View
               className="pt-1"
-              style={{ borderTopWidth: 1, borderTopColor: colors.border + '99' }}
+              style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border + '99' }}
             >
               <ReactionBar refId={post.id} refType="post" showIdea />
             </View>
-          </View>
+          </SoftSurface>
         )}
 
         {post ? (
@@ -265,6 +254,6 @@ export default function PostDetailScreen() {
           </View>
         </Pressable>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }

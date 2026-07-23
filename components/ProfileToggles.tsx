@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
+import SoftSurface from './ui/SoftSurface';
 
 export type ProfileToggleKey =
   | 'available_for_missions'
@@ -101,9 +102,9 @@ export default function ProfileToggles({
   const activeCount = ROWS.filter((r) => values[r.key]).length;
 
   return (
-    <View
-      style={{ backgroundColor: colors.card, borderColor: colors.border }}
-      className="border rounded-2xl overflow-hidden mb-3"
+    <SoftSurface
+      variant="card"
+      className="overflow-hidden mb-3"
     >
       <Pressable
         onPress={() => setOpen((o) => !o)}
@@ -203,7 +204,7 @@ export default function ProfileToggles({
             );
           })
         : null}
-    </View>
+    </SoftSurface>
   );
 }
 

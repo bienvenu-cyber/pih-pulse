@@ -1,8 +1,10 @@
 import { useRouter } from 'expo-router';
 import { ArrowRight, Layers, Target, Trophy } from 'lucide-react-native';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { GlassCard } from '../components/ui/Glass';
+import PressableScale from '../components/ui/PressableScale';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
 import { markOnboardingDone } from '../lib/onboarding';
 
@@ -36,7 +38,6 @@ export default function OnboardingScreen() {
   const [leaving, setLeaving] = useState(false);
   const router = useRouter();
 
-  /** Fin d’onboarding = une seule fois (flag local) → login */
   const finishOnboarding = async () => {
     if (leaving) return;
     setLeaving(true);
@@ -67,13 +68,30 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
+      {/* Halo décoratif — moment wow */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: -60,
+          alignSelf: 'center',
+          width: 320,
+          height: 320,
+          borderRadius: 160,
+          backgroundColor: accentColor,
+          opacity: 0.08,
+        }}
+      />
+
       <View className="h-12 justify-center items-end px-6">
         {currentSlide < SLIDES.length - 1 ? (
-          <Pressable
+          <PressableScale
             onPress={handleSkip}
             accessibilityRole="button"
             accessibilityLabel="Passer l’onboarding"
             hitSlop={10}
+            hapticKind="selection"
+            scaleTo={0.96}
           >
             <Text
               style={{ color: colors.textSecondary }}
@@ -81,19 +99,17 @@ export default function OnboardingScreen() {
             >
               Passer
             </Text>
-          </Pressable>
+          </PressableScale>
         ) : null}
       </View>
 
       <View className="flex-1 justify-center items-center px-8">
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderColor: colors.border,
-          }}
-          className="w-40 h-40 rounded-full justify-center items-center mb-12 border"
-        >
-          <IconComponent size={64} color={accentColor} strokeWidth={1.5} />
+        <View className="mb-12 overflow-hidden rounded-full">
+          <GlassCard>
+            <View className="w-40 h-40 items-center justify-center">
+              <IconComponent size={64} color={accentColor} strokeWidth={1.5} />
+            </View>
+          </GlassCard>
         </View>
 
         <View className="items-center">
@@ -132,19 +148,20 @@ export default function OnboardingScreen() {
           })}
         </View>
 
-        <Pressable
+        <PressableScale
           onPress={handleNext}
+          hapticKind="medium"
           accessibilityRole="button"
           accessibilityLabel={
             currentSlide === SLIDES.length - 1 ? 'Commencer' : 'Suivant'
           }
-          className="bg-turmeric h-14 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90"
+          className="bg-turmeric h-14 rounded-2xl flex-row justify-center items-center gap-2"
         >
-          <Text className="text-malt-deep font-inter-bold text-base font-bold">
+          <Text style={{ color: colors.onTurmeric }} className="font-inter text-base font-bold">
             {currentSlide === SLIDES.length - 1 ? 'Commencer' : 'Suivant'}
           </Text>
-          <ArrowRight size={18} color="#0D0B05" strokeWidth={2.5} />
-        </Pressable>
+          <ArrowRight size={18} color={colors.onTurmeric} strokeWidth={2.5} />
+        </PressableScale>
       </View>
     </SafeAreaView>
   );

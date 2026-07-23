@@ -7,6 +7,16 @@
     "icon": "./assets/images/icon.png",
     "scheme": "pihpulse",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splash-light.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F8F5EC",
+      "dark": {
+        "image": "./assets/images/splash-dark.png",
+        "backgroundColor": "#0D0B05",
+        "resizeMode": "contain"
+      }
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ben229.PIHPULSE",

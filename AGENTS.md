@@ -58,13 +58,16 @@ L'application supporte **3 thèmes** sélectionnables par l'utilisateur dans le 
   5. **Profil** (icône `User`)
   - Actif : turmeric · Inactif : sable/crème secondaire · Taille icône 22.
 
-* **Header (En-tête de l'application) — style social clean (Instagram-like) :**
+* **Header (En-tête de l'application) — glass social (Instagram-like) :**
   - Titre / wordmark à gauche : **PIH Pulse** (ou titre de l’écran) ; feed peut utiliser `+` création.
   - Actions à droite : **icônes nues** (pas de pastille/cercle bordé, pas de fond carte).
     1. Notifications — `Bell` (24, stroke ~1.85).
     2. Messagerie — `MessageCircle` (bulle, **pas** `Send` / avion).
   - Badges non-lus : petite pastille turmeric sur l’icône uniquement.
-  - Header flottant léger (`headerBg` semi-transparent) + hairline, hauteur contenu ~48.
+  - Header **glass** (`GlassSurface` + `expo-blur`) + hairline, hauteur contenu ~48.
+  - Tab bar **glass** (`tabBarBackground` BlurView). Sheets création/invite = `GlassSheet`.
+  - Micro-interactions : `PressableScale` (0.97) + haptics légers (`lib/haptics`).
+  - **Ne pas** glassifier les formulaires / validation métier — solid + clean.
 
 ---
 

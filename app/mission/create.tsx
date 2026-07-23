@@ -1,31 +1,35 @@
 import { useRouter } from 'expo-router';
-import { Award, Calendar, Layers, Target } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import MediaPickerField from '../../components/MediaPickerField';
+import { Award, Calendar, Image as ImageIcon, Layers, Target, X as XIcon } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
 import {
-  ChoiceGrid,
-  ChipSelect,
-  FormAlert,
-  FormField,
-  FormMultiline,
-  FormScreen,
-  FormSection,
-  ImpactBanner,
-  StepFooter,
-} from '../../components/ui/form/FormPrimitives';
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ProfileAvatar } from '../../components/ProfileAvatar';
+import KeyboardSafe from '../../components/ui/KeyboardSafe';
+import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import PressableScale from '../../components/ui/PressableScale';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { parseDurationToDeadline } from '../../lib/deadline';
 import { grantCreateMissionImpact } from '../../lib/hub';
 import { IMPACT_POINTS } from '../../lib/impact';
-import type { MediaAsset } from '../../lib/media';
+import { pickAndUploadPostMedia, type MediaAsset } from '../../lib/media';
 import { supabase } from '../../lib/supabase';
 
 const DIFFICULTY_OPTIONS = [
-  { id: 'easy', label: 'Facile', description: 'Quelques heures', color: '#7CB87A' },
-  { id: 'medium', label: 'Moyen', description: 'Quelques jours', color: '#FFBE0B' },
-  { id: 'hard', label: 'Difficile', description: 'Sprint sérieux', color: '#E8634A' },
+  { id: 'easy', label: 'Facile', desc: 'Quelques heures', color: '#7CB87A' },
+  { id: 'medium', label: 'Moyen', desc: 'Quelques jours', color: '#FFBE0B' },
+  { id: 'hard', label: 'Difficile', desc: 'Sprint sérieux', color: '#E8634A' },
 ];
+
+const REWARD_PRESETS = [40, 80, 120, 200];
+const DURATION_PRESETS = ['3j', '5j', '7j', '14j'];
 
 const SKILLS_POOL = [
   'React Native',
@@ -36,32 +40,30 @@ const SKILLS_POOL = [
   'Python',
   'Marketing',
   'Agile',
-].map((s) => ({ id: s, label: s }));
-
-const REWARD_PRESETS = [40, 80, 120, 200];
-const DURATION_PRESETS = ['3 jours', '5 jours', '7 jours', '14 jours', '48 h'];
-const STEPS = ['Brief', 'Récompense'];
+];
 
 export default function CreateMissionScreen() {
   const { colors } = useThemeFlavor();
   const router = useRouter();
 
-  const [step, setStep] = useState(0);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [reward, setReward] = useState('80');
-  const [duration, setDuration] = useState('5 jours');
+  const [customReward, setCustomReward] = useState(false);
+  const [duration, setDuration] = useState('5j');
+  const [customDuration, setCustomDuration] = useState(false);
   const [difficulty, setDifficulty] = useState('medium');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [media, setMedia] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [userId, setUserId] = useState<string | null>(null);
-  const [media, setMedia] = useState<MediaAsset[]>([]);
+  const [userProfile, setUserProfile] = useState<{ full_name?: string | null; avatar_url?: string | null } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -74,9 +76,16 @@ export default function CreateMissionScreen() {
         router.replace('/login');
         return;
       }
-      setUserId(session.user.id);
+      const uid = session.user.id;
+      setUserId(uid);
+
+      const [{ data: prof }] = await Promise.all([
+        supabase.from('profiles').select('full_name, avatar_url').eq('id', uid).maybeSingle(),
+      ]);
+
+      if (prof) setUserProfile(prof);
       setAuthChecking(false);
-      await fetchProjects(session.user.id);
+      await fetchProjects(uid);
     })();
     return () => {
       mounted = false;
@@ -130,72 +139,46 @@ export default function CreateMissionScreen() {
     }
   };
 
-  const progress = useMemo(() => (step + 1) / STEPS.length, [step]);
-
-  const validateStep0 = () => {
-    const errs: Record<string, string> = {};
-    if (!selectedProject) errs.project = 'Choisis un projet.';
-    if (!title.trim()) errs.title = 'Le titre est obligatoire.';
-    setFieldErrors(errs);
-    if (Object.keys(errs).length) return false;
-    return true;
+  const toggleSkill = (skill: string) => {
+    setSelectedSkills((prev) =>
+      prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
+    );
   };
 
-  const handleNext = () => {
+  const addMedia = async () => {
+    const remaining = 4 - media.length;
+    if (remaining <= 0) return;
+    setUploadingMedia(true);
     setErrorMsg('');
-    if (step === 0 && !validateStep0()) return;
-    if (step < STEPS.length - 1) setStep((s) => s + 1);
+    try {
+      const assets = await pickAndUploadPostMedia(userId, remaining);
+      if (assets.length) {
+        setMedia((prev) => [...prev, ...assets]);
+      }
+    } catch (e: any) {
+      if (e?.message !== 'CANCELLED') {
+        const msg = typeof e === 'string' ? e : e?.message || e?.error_description || String(e);
+        setErrorMsg(msg || 'Échec upload média.');
+      }
+    } finally {
+      setUploadingMedia(false);
+    }
   };
+
+  const removeMedia = (index: number) => {
+    setMedia((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const canPublish = selectedProject && title.trim().length > 0 && !loading && !uploadingMedia;
 
   const handleCreate = async () => {
-    if (!validateStep0()) {
-      setStep(0);
-      return;
-    }
+    if (!canPublish || !userId) return;
 
     setLoading(true);
     setErrorMsg('');
 
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError || !user) {
-        setErrorMsg('Tu dois être connecté pour créer une mission.');
-        setLoading(false);
-        return;
-      }
-
-      // Lead via membership OU créateur du projet
-      const { data: membership } = await supabase
-        .from('project_members')
-        .select('role')
-        .eq('project_id', selectedProject)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      const { data: owned } = await supabase
-        .from('projects')
-        .select('id')
-        .eq('id', selectedProject)
-        .eq('creator_id', user.id)
-        .maybeSingle();
-
-      const role = (membership?.role || '').toLowerCase();
-      const isLeadMember =
-        role.includes('founder') || role.includes('lead') || role.includes('creator');
-      const isCreator = !!owned;
-
-      if (!isLeadMember && !isCreator) {
-        setErrorMsg('Seuls les Founders et Leads peuvent créer des missions.');
-        setLoading(false);
-        return;
-      }
-
-      const deadline =
-        parseDurationToDeadline(duration) ||
-        parseDurationToDeadline('5 jours');
+      const deadline = parseDurationToDeadline(duration) || parseDurationToDeadline('5 jours');
 
       const { data: missionRow, error } = await supabase
         .from('missions')
@@ -219,7 +202,7 @@ export default function CreateMissionScreen() {
         return;
       }
 
-      await grantCreateMissionImpact(user.id, title.trim(), missionRow?.id);
+      await grantCreateMissionImpact(userId, title.trim(), missionRow?.id);
       if (missionRow?.id) {
         router.replace(`/mission/${missionRow.id}`);
         return;
@@ -231,238 +214,479 @@ export default function CreateMissionScreen() {
     }
   };
 
+  if (authChecking || projectsLoading) {
+    return (
+      <View style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ScreenSkeleton variant="form" />
+      </View>
+    );
+  }
+
   return (
-    <FormScreen
-      title="Nouvelle mission"
-      subtitle={`${STEPS[step]} · ${step + 1}/${STEPS.length}`}
-      onBack={() => {
-        if (step > 0) setStep((s) => s - 1);
-        else router.back();
-      }}
-      loading={authChecking || projectsLoading}
-      progress={progress}
-      footer={
-        <StepFooter
-          showBack={step > 0}
-          onBack={() => setStep((s) => Math.max(0, s - 1))}
-          onNext={step < STEPS.length - 1 ? handleNext : handleCreate}
-          nextLabel={
-            step < STEPS.length - 1
-              ? 'Continuer'
-              : `Publier · +${IMPACT_POINTS.createMission}`
-          }
-          nextIcon={step === STEPS.length - 1 ? Target : undefined}
-          loading={loading}
-          nextDisabled={projects.length === 0}
-        />
-      }
-    >
-      <ImpactBanner
-        points={IMPACT_POINTS.createMission}
-        label="Publier une mission crédite +15 Élan. Les contributeurs gagnent aussi à la validation."
-      />
+    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
+      {/* Header ultra-clean type X / Threads */}
+      <View
+        style={{
+          height: 48,
+          paddingHorizontal: 16,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <PressableScale onPress={() => router.back()} hitSlop={10}>
+          <Text style={{ color: colors.text, fontSize: 15, fontFamily: 'Inter500' }}>
+            Annuler
+          </Text>
+        </PressableScale>
 
-      {errorMsg ? <FormAlert message={errorMsg} /> : null}
-
-      {step === 0 ? (
-        <FormSection
-          icon={Target}
-          stepLabel="Étape 1"
-          title="Brief de la mission"
-          subtitle="Un titre actionnable + un livrable clair = plus de candidatures."
+        <PressableScale
+          onPress={handleCreate}
+          disabled={!canPublish}
+          style={{
+            backgroundColor: canPublish ? colors.turmeric : colors.deep,
+            opacity: canPublish ? 1 : 0.4,
+            paddingHorizontal: 16,
+            paddingVertical: 6,
+            borderRadius: 20,
+          }}
         >
-          <View className="gap-1.5">
+          {loading ? (
+            <ActivityIndicator size="small" color="#0D0B05" />
+          ) : (
             <Text
-              style={{ color: colors.textSecondary }}
-              className="font-inter text-[11px] font-semibold"
+              style={{ color: canPublish ? colors.onTurmeric : colors.textSecondary }}
+              className="font-inter text-xs font-bold"
             >
-              Projet associé *
+              Publier (+{IMPACT_POINTS.createMission} Élan)
             </Text>
-            {projects.length === 0 ? (
-              <Text style={{ color: colors.corail }} className="font-inter text-[12px]">
-                Aucun projet lead. Crée un projet d’abord.
-              </Text>
-            ) : (
-              <View className="flex-row flex-wrap gap-2">
-                {projects.map((proj) => {
-                  const active = selectedProject === proj.id;
-                  return (
-                    <Pressable
-                      key={proj.id}
-                      onPress={() => setSelectedProject(proj.id)}
-                      style={{
-                        backgroundColor: active ? colors.turmeric : colors.deep,
-                        borderColor: active ? colors.turmeric : colors.border,
-                      }}
-                      className="border rounded-2xl px-3.5 py-2.5 flex-row items-center gap-2"
-                    >
-                      <Layers
-                        size={14}
-                        color={active ? colors.onTurmeric : colors.textSecondary}
-                      />
-                      <Text
-                        style={{ color: active ? colors.onTurmeric : colors.text }}
-                        className="font-inter text-[12px] font-semibold"
-                      >
-                        {proj.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-            {fieldErrors.project ? (
-              <Text style={{ color: colors.corail }} className="font-inter text-[11px]">
-                {fieldErrors.project}
-              </Text>
-            ) : null}
-          </View>
+          )}
+        </PressableScale>
+      </View>
 
-          <FormField
-            label="Titre"
-            required
-            placeholder="Ex: Auth email + OTP sur mobile"
-            value={title}
-            onChangeText={(t) => {
-              setTitle(t);
-              if (fieldErrors.title) setFieldErrors((e) => ({ ...e, title: '' }));
-            }}
-            editable={!loading}
-            error={fieldErrors.title}
-            maxLength={100}
-            counter={{ current: title.length, max: 100 }}
-          />
-          <FormMultiline
-            label="Cahier des charges"
-            placeholder="Contexte, tâches, livrable attendu, critères d’acceptation…"
-            value={description}
-            onChangeText={setDescription}
-            editable={!loading}
-            minHeight={140}
-            maxLength={1500}
-            counter={{ current: description.length, max: 1500 }}
-          />
-        </FormSection>
-      ) : null}
-
-      {step === 1 ? (
-        <>
-          <FormSection
-            icon={Award}
-            stepLabel="Étape 2"
-            title="Difficulté & Élan"
-            subtitle="Calibre l’effort pour attirer le bon profil."
+      <KeyboardSafe className="flex-1" offset={0}>
+        <View className="flex-1">
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24, gap: 16 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
-            <ChoiceGrid
-              options={DIFFICULTY_OPTIONS}
-              value={difficulty}
-              onChange={setDifficulty}
-            />
+            {errorMsg ? (
+              <Text className="text-corail font-inter text-xs px-1">{errorMsg}</Text>
+            ) : null}
 
-            <View className="gap-2">
-              <Text
-                style={{ color: colors.textSecondary }}
-                className="font-inter text-[11px] font-semibold"
-              >
-                Points de récompense
+            {/* Projet associé (chips horizontales épurées) */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 11, fontFamily: 'Inter600' }}>
+                Projet associé *
               </Text>
-              <View className="flex-row flex-wrap gap-2">
-                {REWARD_PRESETS.map((pts) => {
-                  const active = reward === String(pts);
-                  return (
-                    <Pressable
-                      key={pts}
-                      onPress={() => setReward(String(pts))}
-                      style={{
-                        backgroundColor: active ? colors.turmeric : colors.deep,
-                        borderColor: active ? colors.turmeric : colors.border,
-                      }}
-                      className="border rounded-full px-4 py-2"
-                    >
-                      <Text
-                        style={{ color: active ? colors.onTurmeric : colors.textSecondary }}
-                        className="font-space text-[12px] font-bold"
-                      >
-                        {pts} pts
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <FormField
-                label="Personnalisé"
-                placeholder="80"
-                value={reward}
-                onChangeText={setReward}
-                keyboardType="numeric"
-                editable={!loading}
-                hint="Le contributeur gagne ces points à la validation"
-              />
-            </View>
-
-            <View className="gap-2">
-              <Text
-                style={{ color: colors.textSecondary }}
-                className="font-inter text-[11px] font-semibold"
-              >
-                Durée estimée → échéance
-              </Text>
-              <View className="flex-row flex-wrap gap-2">
-                {DURATION_PRESETS.map((d) => {
-                  const active = duration === d;
-                  return (
-                    <Pressable
-                      key={d}
-                      onPress={() => setDuration(d)}
-                      style={{
-                        backgroundColor: active ? colors.turmeric : colors.deep,
-                        borderColor: active ? colors.turmeric : colors.border,
-                      }}
-                      className="border rounded-full px-3.5 py-2"
-                    >
-                      <Text
+              {projects.length === 0 ? (
+                <Text style={{ color: colors.corail, fontSize: 12, fontFamily: 'Inter400' }}>
+                  Aucun projet lead. Crée un projet d’abord.
+                </Text>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  {projects.map((proj) => {
+                    const active = selectedProject === proj.id;
+                    return (
+                      <PressableScale
+                        key={proj.id}
+                        onPress={() => setSelectedProject(proj.id)}
                         style={{
-                          color: active ? colors.onTurmeric : colors.textSecondary,
+                          backgroundColor: active ? colors.turmeric : colors.card,
+                          borderColor: active ? colors.turmeric : colors.border,
+                          borderWidth: 1,
+                          borderRadius: 20,
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
                         }}
-                        className="font-inter text-[11px] font-semibold"
                       >
-                        {d}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <FormField
-                label="Personnalisé"
-                placeholder="Ex: 5 jours · 48 h · 2 semaines"
-                value={duration}
-                onChangeText={setDuration}
-                leftIcon={Calendar}
-                editable={!loading}
-                hint="Enregistré comme date limite (deadline) en base"
-              />
+                        <Layers size={13} color={active ? colors.onTurmeric : colors.textSecondary} />
+                        <Text
+                          style={{
+                            color: active ? colors.onTurmeric : colors.text,
+                            fontSize: 12,
+                            fontFamily: 'Inter600',
+                          }}
+                        >
+                          {proj.name}
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+                </ScrollView>
+              )}
             </View>
-          </FormSection>
 
-          <FormSection title="Compétences" subtitle="Tags pour le matching « Pour moi ».">
-            <ChipSelect
-              options={SKILLS_POOL}
-              values={selectedSkills}
-              onChange={setSelectedSkills}
-            />
-          </FormSection>
+            {/* Layout Canvas Mission : Avatar + Inputs Titre et Cahier des Charges */}
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <ProfileAvatar
+                uri={userProfile?.avatar_url}
+                name={userProfile?.full_name}
+                size={40}
+                bg={colors.card}
+                borderColor={colors.border}
+              />
 
-          <FormSection title="Médias" subtitle="Mockups, captures, brief visuel (optionnel).">
-            <MediaPickerField
-              userId={userId}
-              value={media}
-              onChange={setMedia}
-              maxItems={3}
-              label="Pièces jointes"
-            />
-          </FormSection>
-        </>
-      ) : null}
-    </FormScreen>
+              <View style={{ flex: 1, gap: 12 }}>
+                {/* Titre */}
+                <TextInput
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="Titre de la mission (ex: Auth OTP Mobile)..."
+                  placeholderTextColor={colors.textSecondary}
+                  maxLength={100}
+                  editable={!loading}
+                  autoFocus
+                  style={
+                    {
+                      color: colors.text,
+                      fontSize: 17,
+                      fontFamily: 'SpaceGrotesk700',
+                      fontWeight: 'bold',
+                      backgroundColor: 'transparent',
+                      borderWidth: 0,
+                      outlineStyle: 'none',
+                      padding: 0,
+                    } as any
+                  }
+                />
+
+                {/* Cahier des charges / Description */}
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Contexte, tâches, livrables attendus, critères d’acceptation..."
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                  maxLength={1500}
+                  editable={!loading}
+                  style={
+                    {
+                      color: colors.text,
+                      minHeight: 90,
+                      textAlignVertical: 'top',
+                      fontSize: 15,
+                      fontFamily: 'Inter400',
+                      lineHeight: 22,
+                      backgroundColor: 'transparent',
+                      borderWidth: 0,
+                      outlineStyle: 'none',
+                      padding: 0,
+                    } as any
+                  }
+                />
+
+                {/* Vignettes médias attachées */}
+                {media.length > 0 ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                    {media.map((m, i) => (
+                      <View
+                        key={`${m.url}-${i}`}
+                        style={{
+                          width: 84,
+                          height: 84,
+                          borderRadius: 14,
+                          overflow: 'hidden',
+                          backgroundColor: colors.card,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <Image source={{ uri: m.thumbUrl || m.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        <PressableScale
+                          onPress={() => removeMedia(i)}
+                          hitSlop={6}
+                          style={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 4,
+                            width: 20,
+                            height: 20,
+                            borderRadius: 10,
+                            backgroundColor: 'rgba(0,0,0,0.7)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <XIcon size={11} color="#fff" strokeWidth={2.5} />
+                        </PressableScale>
+                      </View>
+                    ))}
+                  </ScrollView>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Paramètres de la mission : Difficulté, Points & Durée */}
+            <SoftSurface className="p-3.5 gap-3.5">
+              {/* Difficulté */}
+              <View style={{ gap: 6 }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, fontFamily: 'Inter600' }}>
+                  Difficulté
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {DIFFICULTY_OPTIONS.map((opt) => {
+                    const active = difficulty === opt.id;
+                    return (
+                      <PressableScale
+                        key={opt.id}
+                        onPress={() => setDifficulty(opt.id)}
+                        style={{
+                          flex: 1,
+                          backgroundColor: active ? opt.color + '20' : colors.deep,
+                          borderColor: active ? opt.color : colors.border,
+                          borderWidth: 1,
+                          borderRadius: 14,
+                          paddingVertical: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text
+                          style={{ color: active ? opt.color : colors.text, fontSize: 12, fontFamily: 'SpaceGrotesk700', fontWeight: 'bold' }}
+                        >
+                          {opt.label}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 9, fontFamily: 'Inter400', marginTop: 1 }}>
+                          {opt.desc}
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Récompense (Points Élan) */}
+              <View style={{ gap: 6 }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, fontFamily: 'Inter600' }}>
+                  Récompense (Points Élan)
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  {REWARD_PRESETS.map((pts) => {
+                    const active = reward === String(pts) && !customReward;
+                    return (
+                      <PressableScale
+                        key={pts}
+                        onPress={() => {
+                          setReward(String(pts));
+                          setCustomReward(false);
+                        }}
+                        style={{
+                          backgroundColor: active ? colors.turmeric : colors.deep,
+                          borderColor: active ? colors.turmeric : colors.border,
+                          borderWidth: 1,
+                          borderRadius: 16,
+                          paddingHorizontal: 12,
+                          paddingVertical: 5,
+                        }}
+                      >
+                        <Text
+                          style={{ color: active ? colors.onTurmeric : colors.textSecondary, fontSize: 12, fontFamily: 'SpaceGrotesk700', fontWeight: 'bold' }}
+                        >
+                          {pts} pts
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+
+                  <PressableScale
+                    onPress={() => setCustomReward((prev) => !prev)}
+                    style={{
+                      backgroundColor: customReward ? colors.turmeric + '20' : colors.deep,
+                      borderColor: customReward ? colors.turmeric : colors.border,
+                      borderWidth: 1,
+                      borderRadius: 16,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                    }}
+                  >
+                    <Text style={{ color: customReward ? colors.turmeric : colors.textSecondary, fontSize: 11, fontFamily: 'Inter500' }}>
+                      Perso
+                    </Text>
+                  </PressableScale>
+                </View>
+
+                {customReward ? (
+                  <TextInput
+                    value={reward}
+                    onChangeText={setReward}
+                    keyboardType="numeric"
+                    placeholder="Ex: 150"
+                    placeholderTextColor={colors.textSecondary}
+                    style={{
+                      backgroundColor: colors.deep,
+                      borderColor: colors.border,
+                      borderWidth: 1,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      color: colors.text,
+                      fontSize: 14,
+                      fontFamily: 'Inter400',
+                    }}
+                  />
+                ) : null}
+              </View>
+
+              {/* Durée estimée */}
+              <View style={{ gap: 6 }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, fontFamily: 'Inter600' }}>
+                  Échéance estimée
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  {DURATION_PRESETS.map((d) => {
+                    const active = duration === d && !customDuration;
+                    return (
+                      <PressableScale
+                        key={d}
+                        onPress={() => {
+                          setDuration(d);
+                          setCustomDuration(false);
+                        }}
+                        style={{
+                          backgroundColor: active ? colors.turmeric : colors.deep,
+                          borderColor: active ? colors.turmeric : colors.border,
+                          borderWidth: 1,
+                          borderRadius: 16,
+                          paddingHorizontal: 12,
+                          paddingVertical: 5,
+                        }}
+                      >
+                        <Text
+                          style={{ color: active ? colors.onTurmeric : colors.textSecondary, fontSize: 11, fontFamily: 'Inter600' }}
+                        >
+                          {d}
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+
+                  <PressableScale
+                    onPress={() => setCustomDuration((prev) => !prev)}
+                    style={{
+                      backgroundColor: customDuration ? colors.turmeric + '20' : colors.deep,
+                      borderColor: customDuration ? colors.turmeric : colors.border,
+                      borderWidth: 1,
+                      borderRadius: 16,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                    }}
+                  >
+                    <Text style={{ color: customDuration ? colors.turmeric : colors.textSecondary, fontSize: 11, fontFamily: 'Inter500' }}>
+                      Perso
+                    </Text>
+                  </PressableScale>
+                </View>
+
+                {customDuration ? (
+                  <TextInput
+                    value={duration}
+                    onChangeText={setDuration}
+                    placeholder="Ex: 10 jours · 48 h"
+                    placeholderTextColor={colors.textSecondary}
+                    style={{
+                      backgroundColor: colors.deep,
+                      borderColor: colors.border,
+                      borderWidth: 1,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      color: colors.text,
+                      fontSize: 14,
+                      fontFamily: 'Inter400',
+                    }}
+                  />
+                ) : null}
+              </View>
+
+              {/* Compétences demandées */}
+              <View style={{ gap: 6 }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, fontFamily: 'Inter600' }}>
+                  Compétences clés
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {SKILLS_POOL.map((skill) => {
+                    const active = selectedSkills.includes(skill);
+                    return (
+                      <PressableScale
+                        key={skill}
+                        onPress={() => toggleSkill(skill)}
+                        style={{
+                          backgroundColor: active ? colors.turmeric : colors.deep,
+                          borderColor: active ? colors.turmeric : colors.border,
+                          borderWidth: 1,
+                          borderRadius: 16,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text
+                          style={{ color: active ? colors.onTurmeric : colors.textSecondary, fontSize: 11, fontFamily: 'Inter500' }}
+                        >
+                          {skill}
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+              </View>
+            </SoftSurface>
+          </ScrollView>
+
+          {/* Sticky Bottom Toolbar (au-dessus du clavier) */}
+          <View
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderTopWidth: 1,
+              borderTopColor: colors.border + '66',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: colors.bg,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              {/* Bouton Média */}
+              <PressableScale
+                onPress={addMedia}
+                disabled={uploadingMedia || media.length >= 4}
+                hitSlop={8}
+              >
+                {uploadingMedia ? (
+                  <ActivityIndicator size="small" color={colors.turmeric} />
+                ) : (
+                  <ImageIcon size={20} color={media.length >= 4 ? colors.textSecondary + '50' : colors.turmeric} />
+                )}
+              </PressableScale>
+
+              {/* Indicateur Récompense */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Award size={16} color={colors.turmeric} />
+                <Text style={{ color: colors.turmeric, fontSize: 11, fontFamily: 'SpaceGrotesk700', fontWeight: 'bold' }}>
+                  {reward} pts
+                </Text>
+              </View>
+
+              {/* Indicateur Durée */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Calendar size={15} color={colors.textSecondary} />
+                <Text style={{ color: colors.textSecondary, fontSize: 11, fontFamily: 'Inter500' }}>
+                  {duration}
+                </Text>
+              </View>
+            </View>
+
+            {/* Compteur titre */}
+            <Text style={{ color: colors.textSecondary, fontSize: 11, fontFamily: 'Inter400' }}>
+              {100 - title.length}
+            </Text>
+          </View>
+        </View>
+      </KeyboardSafe>
+    </SafeAreaView>
   );
 }

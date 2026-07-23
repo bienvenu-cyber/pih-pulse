@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ArrowLeft, Check, CheckCheck, MessageCircle, Search, Send } from 'lucide-react-native';
+import { Check, CheckCheck, MessageCircle, Search } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
@@ -9,10 +9,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
+import ThemedStackHeader from '../../components/ThemedStackHeader';
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { countProjectChatUnreadBatch } from '../../lib/chatRead';
@@ -270,37 +271,17 @@ export default function ChatInboxScreen() {
   }
 
   return (
-    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1" edges={['top']}>
-      {/* Header clean — icônes nues, pas de pastilles */}
-      <View
-        style={{
-          borderBottomColor: colors.border + '99',
-          borderBottomWidth: 0.5,
-          height: 48,
-          paddingHorizontal: 8,
+    <View style={{ backgroundColor: colors.bg }} className="flex-1">
+      <ThemedStackHeader
+        title="Messagerie"
+        onBack={() => {
+          if (router.canGoBack()) router.back();
+          else router.replace('/(tabs)');
         }}
-        className="flex-row items-center justify-between"
-      >
-        <Pressable
-          onPress={() => router.replace('/(tabs)')}
-          accessibilityRole="button"
-          accessibilityLabel="Retour"
-          hitSlop={10}
-          className="w-11 h-11 items-center justify-center active:opacity-55"
-        >
-          <ArrowLeft size={24} color={colors.text} strokeWidth={1.85} />
-        </Pressable>
-        <Text style={{ color: colors.text }} className="font-space text-[17px] font-bold">
-          Messagerie
-        </Text>
-        <View className="w-11 h-11" />
-      </View>
+      />
 
-      <View className="px-4 pt-2 pb-3">
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="flex-row items-center h-10 rounded-full border px-3.5 gap-2"
-        >
+      <View className="px-4 pt-3 pb-2">
+        <SoftSurface variant="inset" className="flex-row items-center h-10 rounded-full px-3.5 gap-2">
           <Search size={16} color={colors.textSecondary} strokeWidth={1.85} />
           <TextInput
             placeholder="Rechercher…"
@@ -310,7 +291,7 @@ export default function ChatInboxScreen() {
             style={{ color: colors.text }}
             className="flex-1 font-inter text-sm h-full"
           />
-        </View>
+        </SoftSurface>
       </View>
 
       <ScrollView
@@ -331,7 +312,7 @@ export default function ChatInboxScreen() {
         ) : (
           <>
             {filteredConversations.length > 0 ? (
-              <View className="gap-2.5">
+              <View className="gap-2">
                 <Text
                   style={{ color: colors.textSecondary }}
                   className="font-inter text-[10px] font-bold uppercase tracking-wider ml-1"
@@ -342,13 +323,12 @@ export default function ChatInboxScreen() {
                   <Pressable
                     key={conv.id}
                     onPress={() => router.push(`/chat/${conv.id}`)}
-                    style={{
-                      backgroundColor: colors.card,
-                      borderColor: conv.isLastMessageUnread
-                        ? colors.turmeric + '55'
-                        : colors.border,
-                    }}
-                    className="flex-row items-center justify-between border p-3.5 rounded-2xl active:opacity-95"
+                    className="active:opacity-95"
+                  >
+                  <SoftSurface
+                    variant="row"
+                    accent={!!conv.isLastMessageUnread}
+                    className="flex-row items-center justify-between p-3.5"
                   >
                     <View className="flex-row items-center gap-3 flex-1 pr-3">
                       <ProfileAvatar
@@ -408,6 +388,7 @@ export default function ChatInboxScreen() {
                         )
                       ) : null}
                     </View>
+                  </SoftSurface>
                   </Pressable>
                 ))}
               </View>
@@ -428,7 +409,7 @@ export default function ChatInboxScreen() {
             )}
 
             {filteredSuggestions.length > 0 && (
-              <View className="gap-2.5 mt-1">
+              <View className="gap-2 mt-1">
                 <Text
                   style={{ color: colors.textSecondary }}
                   className="font-inter text-[10px] font-bold uppercase tracking-wider ml-1"
@@ -439,12 +420,9 @@ export default function ChatInboxScreen() {
                   <Pressable
                     key={sugg.id}
                     onPress={() => router.push(`/chat/${sugg.id}`)}
-                    style={{
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                    }}
-                    className="flex-row items-center justify-between border p-3.5 rounded-2xl active:opacity-95"
+                    className="active:opacity-95"
                   >
+                  <SoftSurface variant="row" className="flex-row items-center justify-between p-3.5">
                     <View className="flex-row items-center gap-3">
                       <ProfileAvatar
                         uri={sugg.avatarUrl}
@@ -471,24 +449,17 @@ export default function ChatInboxScreen() {
                       </View>
                     </View>
                     <View
-                      style={{
-                        backgroundColor: colors.deep,
-                        borderColor: colors.border,
-                      }}
-                      className="border px-3 py-1.5 rounded-full flex-row items-center gap-1"
+                      style={{ backgroundColor: colors.deep }}
+                      className="px-3 py-1.5 rounded-full"
                     >
                       <Text
                         style={{ color: colors.text }}
-                        className="font-inter text-[10px] font-bold"
+                        className="font-inter text-[10px] font-semibold"
                       >
                         Message
                       </Text>
-                      <Send
-                        size={8}
-                        color={colors.text}
-                        style={{ transform: [{ rotate: '30deg' }] }}
-                      />
                     </View>
+                  </SoftSurface>
                   </Pressable>
                 ))}
               </View>
@@ -496,6 +467,6 @@ export default function ChatInboxScreen() {
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }

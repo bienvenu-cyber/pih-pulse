@@ -3,7 +3,6 @@ import { Bell, Check, FileText, Globe } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   Switch,
   Text,
@@ -12,7 +11,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ThemedStackHeader from '../../components/ThemedStackHeader';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import PressableScale from '../../components/ui/PressableScale';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { haptic } from '../../lib/haptics';
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -60,6 +62,7 @@ export default function ProfileSettingsScreen() {
 
   const togglePush = async (next: boolean) => {
     if (!userId || pushBusy) return;
+    void haptic('light');
     setPushBusy(true);
     setMsg('');
     setPushOn(next);
@@ -88,6 +91,7 @@ export default function ProfileSettingsScreen() {
 
   const setLocalePref = async (loc: Locale) => {
     if (!userId) return;
+    void haptic('light');
     setLocale(loc);
     const { persistLocale } = await import('../../lib/i18n');
     await persistLocale(loc);
@@ -115,15 +119,12 @@ export default function ProfileSettingsScreen() {
       <ThemedStackHeader title="Préférences" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 40 }}>
         {msg ? (
-          <Text style={{ color: colors.kaki }} className="font-inter text-xs">
+          <Text style={{ color: colors.kaki }} className="font-inter text-xs px-1">
             {msg}
           </Text>
         ) : null}
 
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 gap-3"
-        >
+        <SoftSurface className="p-4 gap-3">
           <View className="flex-row items-center gap-2">
             <Bell size={16} color={colors.turmeric} />
             <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
@@ -138,7 +139,7 @@ export default function ProfileSettingsScreen() {
             . Les interrupteurs détaillés (dispo, présence, notifs, rappels) sont sur l’onglet
             Profil → Contrôles.
           </Text>
-          <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center justify-between pt-1">
             <Text style={{ color: colors.text }} className="font-inter text-[13px]">
               Push global
             </Text>
@@ -153,12 +154,9 @@ export default function ProfileSettingsScreen() {
               />
             )}
           </View>
-        </View>
+        </SoftSurface>
 
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 gap-3"
-        >
+        <SoftSurface className="p-4 gap-3">
           <View className="flex-row items-center gap-2">
             <Globe size={16} color={colors.turmeric} />
             <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
@@ -169,7 +167,7 @@ export default function ProfileSettingsScreen() {
             FR / EN via lib/i18n (clés progressives). Préférence aussi stockée en local et sur le
             profil.
           </Text>
-          <View className="flex-row gap-2">
+          <View className="flex-row gap-2 pt-1">
             {(
               [
                 { id: 'fr' as const, label: 'Français' },
@@ -178,7 +176,7 @@ export default function ProfileSettingsScreen() {
             ).map((l) => {
               const on = locale === l.id;
               return (
-                <Pressable
+                <PressableScale
                   key={l.id}
                   onPress={() => setLocalePref(l.id)}
                   style={{
@@ -194,27 +192,30 @@ export default function ProfileSettingsScreen() {
                   >
                     {l.label}
                   </Text>
-                </Pressable>
+                </PressableScale>
               );
             })}
           </View>
-        </View>
+        </SoftSurface>
 
-        <Pressable
-          onPress={() => router.push('/legal/privacy')}
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 flex-row items-center gap-3 active:opacity-90"
+        <PressableScale
+          onPress={() => {
+            void haptic('light');
+            router.push('/legal/privacy');
+          }}
         >
-          <FileText size={16} color={colors.turmeric} />
-          <View className="flex-1">
-            <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
-              Confidentialité
-            </Text>
-            <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px]">
-              Politique de données & droits (in-app)
-            </Text>
-          </View>
-        </Pressable>
+          <SoftSurface className="p-4 flex-row items-center gap-3">
+            <FileText size={16} color={colors.turmeric} />
+            <View className="flex-1">
+              <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+                Confidentialité
+              </Text>
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px]">
+                Politique de données & droits (in-app)
+              </Text>
+            </View>
+          </SoftSurface>
+        </PressableScale>
       </ScrollView>
     </SafeAreaView>
   );

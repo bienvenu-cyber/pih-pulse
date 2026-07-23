@@ -18,11 +18,13 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PresenceDot, ProfileStatusMeta } from '../../components/ProfileStatus';
 import ThemedStackHeader from '../../components/ThemedStackHeader';
 import { isUserOnline } from '../../components/ProfileToggles';
+import { GlassCard, GlassScrim, GlassSheet } from '../../components/ui/Glass';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import PressableScale from '../../components/ui/PressableScale';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { sendProjectInvite } from '../../lib/invites';
 import { formatLevelName, getLevelProgress } from '../../lib/reputation';
@@ -30,6 +32,7 @@ import { supabase } from '../../lib/supabase';
 
 export default function MemberProfileDetailsScreen() {
   const { colors } = useThemeFlavor();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams();
   const router = useRouter();
 
@@ -247,66 +250,67 @@ export default function MemberProfileDetailsScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero aligné onglet Profil (stamp + dispo + rôle) */}
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 mb-4 overflow-hidden"
-        >
-          <View className="flex-row items-start gap-3.5">
-            <View className="relative">
-              <View
-                style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-                className="w-[72px] h-[72px] rounded-full border overflow-hidden items-center justify-center"
-              >
-                {talent.avatarUrl ? (
-                  <Image
-                    source={{ uri: talent.avatarUrl }}
-                    style={{ width: 72, height: 72 }}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Text style={{ color: colors.text }} className="font-space text-2xl font-bold">
-                    {talent.initials}
+        {/* Hero glass immersif */}
+        <View className="mb-4 overflow-hidden rounded-3xl">
+          <GlassCard>
+            <View className="p-4">
+              <View className="flex-row items-start gap-3.5">
+                <View className="relative">
+                  <View
+                    style={{ backgroundColor: colors.deep, borderColor: colors.border }}
+                    className="w-[72px] h-[72px] rounded-full border overflow-hidden items-center justify-center"
+                  >
+                    {talent.avatarUrl ? (
+                      <Image
+                        source={{ uri: talent.avatarUrl }}
+                        style={{ width: 72, height: 72 }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={{ color: colors.text }} className="font-space text-2xl font-bold">
+                        {talent.initials}
+                      </Text>
+                    )}
+                  </View>
+                  <PresenceDot online={talent.online} size={14} borderColor={colors.card} />
+                </View>
+                <View className="flex-1 min-w-0 gap-0.5">
+                  <Text
+                    style={{ color: colors.text }}
+                    className="font-space text-lg font-bold"
+                    numberOfLines={1}
+                  >
+                    {talent.name}
                   </Text>
-                )}
+                  {talent.username ? (
+                    <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+                      {talent.username}
+                    </Text>
+                  ) : null}
+                  <ProfileStatusMeta
+                    roleLabel={talent.role}
+                    available={talent.available}
+                    online={talent.online}
+                    hideOnlineDot
+                  />
+                </View>
+                <View
+                  style={{
+                    borderColor: colors.turmeric + '50',
+                    transform: [{ rotate: '12deg' }],
+                  }}
+                  className="mt-1 px-3 py-1.5 rounded-md border"
+                >
+                  <Text
+                    style={{ color: colors.turmeric, letterSpacing: 1.4 }}
+                    className="font-space text-[12px] font-bold uppercase"
+                  >
+                    {formatLevelName(level.level)}
+                  </Text>
+                </View>
               </View>
-              <PresenceDot online={talent.online} size={14} borderColor={colors.card} />
             </View>
-            <View className="flex-1 min-w-0 gap-0.5">
-              <Text
-                style={{ color: colors.text }}
-                className="font-space text-lg font-bold"
-                numberOfLines={1}
-              >
-                {talent.name}
-              </Text>
-              {talent.username ? (
-                <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
-                  {talent.username}
-                </Text>
-              ) : null}
-              <ProfileStatusMeta
-                roleLabel={talent.role}
-                available={talent.available}
-                online={talent.online}
-                hideOnlineDot
-              />
-            </View>
-            <View
-              style={{
-                borderColor: colors.turmeric + '50',
-                transform: [{ rotate: '12deg' }],
-              }}
-              className="mt-1 px-3 py-1.5 rounded-md border"
-            >
-              <Text
-                style={{ color: colors.turmeric, letterSpacing: 1.4 }}
-                className="font-space text-[12px] font-bold uppercase"
-              >
-                {formatLevelName(level.level)}
-              </Text>
-            </View>
-          </View>
+          </GlassCard>
         </View>
 
         {/* Stats */}
@@ -439,9 +443,10 @@ export default function MemberProfileDetailsScreen() {
         {/* CTAs */}
         {!isSelf && (
           <View className="gap-2 mt-2">
-            <Pressable
+            <PressableScale
               onPress={handleContact}
-              className="bg-turmeric h-12 rounded-2xl items-center justify-center active:opacity-90"
+              hapticKind="medium"
+              className="bg-turmeric h-12 rounded-2xl items-center justify-center"
               accessibilityRole="button"
               accessibilityLabel="Contacter"
             >
@@ -451,68 +456,79 @@ export default function MemberProfileDetailsScreen() {
               >
                 Contacter
               </Text>
-            </Pressable>
+            </PressableScale>
             {canInvite ? (
-              <Pressable
+              <PressableScale
                 onPress={() => setInviteOpen(true)}
-                style={{ borderColor: colors.border, backgroundColor: colors.card }}
-                className="border h-12 rounded-2xl flex-row justify-center items-center gap-2 active:opacity-90"
+                style={{ borderColor: colors.border, backgroundColor: colors.card, borderWidth: 1 }}
+                className="h-12 rounded-2xl flex-row justify-center items-center gap-2"
               >
                 <UserPlus size={16} color={colors.text} />
                 <Text style={{ color: colors.text }} className="font-inter-bold text-sm font-bold">
                   Inviter sur un projet
                 </Text>
-              </Pressable>
+              </PressableScale>
             ) : null}
           </View>
         )}
       </ScrollView>
 
-      {/* Invite modal */}
-      <Modal visible={inviteOpen} transparent animationType="fade">
-        <View className="flex-1 bg-black/70 justify-end">
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border-t rounded-t-3xl p-5 gap-3 max-h-[70%]"
-          >
-            <Text style={{ color: colors.text }} className="font-space text-base font-bold">
-              Inviter {talent.name}
-            </Text>
-            <Text style={{ color: colors.textSecondary }} className="font-inter text-xs mb-1">
-              Choisis un projet dont tu es lead. Une notification lui sera envoyée.
-            </Text>
-            <ScrollView className="max-h-64">
-              <View className="gap-2">
-                {myLeadProjects.map((p) => (
-                  <Pressable
-                    key={p.id}
-                    disabled={inviteBusy}
-                    onPress={() => handleInvite(p)}
-                    style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-                    className="border rounded-xl px-4 py-3 active:opacity-80"
-                  >
-                    <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
-                      {p.name}
+      {/* Invite modal — glass sheet */}
+      <Modal visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}>
+        <GlassScrim>
+          <Pressable className="flex-1 justify-end" onPress={() => setInviteOpen(false)}>
+            <Pressable onPress={(e) => e.stopPropagation?.()}>
+              <GlassSheet style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
+                <View className="p-5 gap-3 max-h-[70%]">
+                  <Text style={{ color: colors.text }} className="font-space text-base font-bold">
+                    Inviter {talent.name}
+                  </Text>
+                  <Text style={{ color: colors.textSecondary }} className="font-inter text-xs mb-1">
+                    Choisis un projet dont tu es lead. Une notification lui sera envoyée.
+                  </Text>
+                  <ScrollView className="max-h-64">
+                    <View className="gap-2">
+                      {myLeadProjects.map((p) => (
+                        <PressableScale
+                          key={p.id}
+                          disabled={inviteBusy}
+                          onPress={() => handleInvite(p)}
+                          style={{
+                            backgroundColor: colors.deep,
+                            borderColor: colors.border,
+                            borderWidth: 1,
+                          }}
+                          className="rounded-xl px-4 py-3"
+                        >
+                          <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+                            {p.name}
+                          </Text>
+                        </PressableScale>
+                      ))}
+                    </View>
+                  </ScrollView>
+                  {inviteMsg ? (
+                    <Text style={{ color: colors.turmeric }} className="font-inter text-xs text-center">
+                      {inviteMsg}
                     </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </ScrollView>
-            {inviteMsg ? (
-              <Text style={{ color: colors.turmeric }} className="font-inter text-xs text-center">
-                {inviteMsg}
-              </Text>
-            ) : null}
-            <Pressable
-              onPress={() => setInviteOpen(false)}
-              className="h-11 items-center justify-center"
-            >
-              <Text style={{ color: colors.textSecondary }} className="font-inter text-sm font-bold">
-                Fermer
-              </Text>
+                  ) : null}
+                  <PressableScale
+                    onPress={() => setInviteOpen(false)}
+                    hapticKind="selection"
+                    className="h-11 items-center justify-center"
+                  >
+                    <Text
+                      style={{ color: colors.textSecondary }}
+                      className="font-inter text-sm font-bold"
+                    >
+                      Fermer
+                    </Text>
+                  </PressableScale>
+                </View>
+              </GlassSheet>
             </Pressable>
-          </View>
-        </View>
+          </Pressable>
+        </GlassScrim>
       </Modal>
     </SafeAreaView>
   );

@@ -1,60 +1,44 @@
-/**
- * Fiche événement hub (hub_events) — détail minimal.
- */
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Calendar, MapPin, Users } from 'lucide-react-native';
+import { Calendar, MapPin } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import ThemedStackHeader from '../../components/ThemedStackHeader';
 import EmptyState from '../../components/ui/EmptyState';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
-import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
+import { formatRelativeTime } from '../../lib/formatTime';
 import { supabase } from '../../lib/supabase';
 
-function pickProfile(raw: any) {
-  if (!raw) return null;
-  return Array.isArray(raw) ? raw[0] : raw;
-}
-
 export default function EventDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useThemeFlavor();
-  const { id } = useLocalSearchParams();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
   const [event, setEvent] = useState<any>(null);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setError('');
+    if (!id) {
+      setError('Événement introuvable.');
+      setLoading(false);
+      return;
+    }
     try {
       const { data, error: err } = await supabase
         .from('hub_events')
-        .select(
-          `
-          id, title, description, location, starts_at, ends_at, created_at, created_by,
-          creator:profiles!created_by(id, full_name, role, avatar_url)
-        `
-        )
+        .select('*')
         .eq('id', id)
-        .single();
-
+        .maybeSingle();
       if (err || !data) {
-        setEvent(null);
         setError('Événement introuvable ou non disponible.');
-        return;
+        setEvent(null);
+      } else {
+        setEvent(data);
+        setError(null);
       }
-
-      const creator = pickProfile(data.creator);
-      setEvent({
-        ...data,
-        creatorName: creator?.full_name || 'PIH Pulse',
-        creatorRole: formatRoleLabel(creator?.role),
-        creatorId: creator?.id || data.created_by,
-      });
-    } catch (e: any) {
-      setError(e?.message || 'Erreur de chargement');
-      setEvent(null);
+    } catch {
+      setError('Impossible de charger l’événement.');
     } finally {
       setLoading(false);
     }
@@ -74,22 +58,8 @@ export default function EventDetailScreen() {
 
   if (!event) {
     return (
-      <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
-        <View
-          style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }}
-          className="h-14 flex-row items-center px-4 border-b gap-3"
-        >
-          <Pressable
-            onPress={() => router.back()}
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="w-10 h-10 rounded-full border items-center justify-center"
-          >
-            <ArrowLeft size={18} color={colors.text} />
-          </Pressable>
-          <Text style={{ color: colors.text }} className="font-space text-base font-bold">
-            Événement
-          </Text>
-        </View>
+      <View style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ThemedStackHeader title="Événement" onBack={() => router.back()} />
         <View className="px-4 pt-8">
           <EmptyState
             icon={Calendar}
@@ -99,7 +69,7 @@ export default function EventDetailScreen() {
             onAction={() => router.replace('/(tabs)')}
           />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -123,35 +93,23 @@ export default function EventDetailScreen() {
     : null;
 
   return (
-    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
-      <View
-        style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }}
-        className="h-14 flex-row items-center px-4 border-b gap-3"
-      >
-        <Pressable
-          onPress={() => router.back()}
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="w-10 h-10 rounded-full border items-center justify-center"
-        >
-          <ArrowLeft size={18} color={colors.text} />
-        </Pressable>
-        <View className="flex-1">
-          <Text style={{ color: colors.text }} className="font-space text-base font-bold" numberOfLines={1}>
-            Événement
-          </Text>
-          <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
-            {formatRelativeTime(event.created_at)}
-          </Text>
-        </View>
-      </View>
+    <View style={{ backgroundColor: colors.bg }} className="flex-1">
+      <ThemedStackHeader
+        title="Événement"
+        subtitle={formatRelativeTime(event.created_at)}
+        onBack={() => router.back()}
+      />
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} className="flex-1">
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 gap-3 mb-4"
-        >
-          <View className="self-start px-2.5 py-1 rounded-full" style={{ backgroundColor: colors.corail + '22' }}>
-            <Text style={{ color: colors.corail }} className="font-inter text-[10px] font-bold uppercase">
+        <SoftSurface variant="card" className="p-5 gap-3 mb-4">
+          <View
+            className="self-start px-2.5 py-1 rounded-full"
+            style={{ backgroundColor: colors.corail + '22' }}
+          >
+            <Text
+              style={{ color: colors.corail }}
+              className="font-inter text-[10px] font-bold uppercase"
+            >
               Événement
             </Text>
           </View>
@@ -159,69 +117,37 @@ export default function EventDetailScreen() {
             {event.title}
           </Text>
           {event.description ? (
-            <Text style={{ color: colors.textSecondary }} className="font-inter text-[14px] leading-6">
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-[13px] leading-5">
               {event.description}
             </Text>
           ) : null}
-        </View>
+          <View className="flex-row items-center gap-2 mt-1">
+            <Calendar size={14} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary }} className="font-inter text-xs flex-1">
+              {startsLabel}
+              {endsLabel ? ` → ${endsLabel}` : ''}
+            </Text>
+          </View>
+          {event.location ? (
+            <View className="flex-row items-center gap-2">
+              <MapPin size={14} color={colors.textSecondary} />
+              <Text style={{ color: colors.textSecondary }} className="font-inter text-xs">
+                {event.location}
+              </Text>
+            </View>
+          ) : null}
+        </SoftSurface>
 
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 gap-4 mb-4"
-        >
-          <View className="flex-row items-start gap-3">
-            <Calendar size={18} color={colors.turmeric} />
-            <View className="flex-1">
-              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] font-bold uppercase">
-                Quand
-              </Text>
-              <Text style={{ color: colors.text }} className="font-inter text-sm font-semibold mt-0.5">
-                {startsLabel}
-              </Text>
-              {endsLabel ? (
-                <Text style={{ color: colors.textSecondary }} className="font-inter text-xs mt-0.5">
-                  Fin · {endsLabel}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-          <View className="flex-row items-start gap-3">
-            <MapPin size={18} color={colors.textSecondary} />
-            <View className="flex-1">
-              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] font-bold uppercase">
-                Où
-              </Text>
-              <Text style={{ color: colors.text }} className="font-inter text-sm font-semibold mt-0.5">
-                {event.location || 'Parakou · PIH'}
-              </Text>
-            </View>
-          </View>
-          <View className="flex-row items-start gap-3">
-            <Users size={18} color={colors.textSecondary} />
-            <View className="flex-1">
-              <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px] font-bold uppercase">
-                Organisé par
-              </Text>
-              <Pressable
-                onPress={() =>
-                  event.creatorId ? router.push(`/profile/${event.creatorId}`) : undefined
-                }
-                disabled={!event.creatorId}
-              >
-                <Text style={{ color: colors.turmeric }} className="font-inter text-sm font-semibold mt-0.5">
-                  {event.creatorName}
-                  {event.creatorRole ? ` · ${event.creatorRole}` : ''}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-
-        <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px] text-center leading-5 px-4">
-          Les inscriptions en ligne arriveront bientôt. Pour l’instant, contacte l’organisateur ou le
-          PIH pour participer.
-        </Text>
+        <SoftSurface variant="card" className="p-4 gap-2">
+          <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
+            Participation
+          </Text>
+          <Text style={{ color: colors.textSecondary }} className="font-inter text-xs leading-5">
+            Les inscriptions en ligne arriveront bientôt. Pour l’instant, contacte l’organisateur ou
+            le hub.
+          </Text>
+        </SoftSurface>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Animated, View } from 'react-native';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import SoftSurface from './SoftSurface';
 
 export type SkeletonVariant = 'card' | 'row' | 'detail' | 'profile' | 'form' | 'chat';
 
@@ -70,15 +71,11 @@ export function SkeletonBlock({
   );
 }
 
-function CardShell({ children }: { children: ReactNode }) {
-  const { colors } = useThemeFlavor();
+function CardShell({ children, className = 'p-4 gap-3' }: { children: ReactNode; className?: string }) {
   return (
-    <View
-      style={{ backgroundColor: colors.card, borderColor: colors.border }}
-      className="border rounded-2xl p-4 gap-3"
-    >
+    <SoftSurface className={className}>
       {children}
-    </View>
+    </SoftSurface>
   );
 }
 
@@ -94,10 +91,10 @@ export default function ListSkeleton({
     return (
       <View className="gap-2.5">
         {Array.from({ length: count }).map((_, i) => (
-          <View
+          <SoftSurface
             key={i}
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl px-3.5 py-3.5 flex-row items-center gap-3"
+            variant="row"
+            className="px-3.5 py-3.5 flex-row items-center gap-3"
           >
             <SkeletonBlock width={44} height={44} radius={22} />
             <View className="flex-1 gap-2">
@@ -105,7 +102,7 @@ export default function ListSkeleton({
               <SkeletonBlock width="78%" height={10} radius={5} />
             </View>
             <SkeletonBlock width={36} height={9} radius={4} />
-          </View>
+          </SoftSurface>
         ))}
       </View>
     );
@@ -259,10 +256,9 @@ export default function ListSkeleton({
   return (
     <View className="gap-3">
       {Array.from({ length: count }).map((_, i) => (
-        <View
+        <SoftSurface
           key={i}
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 gap-3"
+          className="p-4 gap-3"
         >
           <View className="flex-row items-center gap-3">
             <SkeletonBlock width={40} height={40} radius={20} />
@@ -274,7 +270,7 @@ export default function ListSkeleton({
           <SkeletonBlock width="90%" height={14} radius={6} />
           <SkeletonBlock width="100%" height={12} radius={5} />
           <SkeletonBlock width="40%" height={10} radius={5} />
-        </View>
+        </SoftSurface>
       ))}
     </View>
   );

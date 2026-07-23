@@ -50,6 +50,11 @@ interface Props {
   rounded?: boolean;
   /** Activer lightbox au tap (défaut true) */
   enableLightbox?: boolean;
+  /**
+   * Full-bleed dans la carte parent (pas de marge latérale 16+16).
+   * Largeur = largeur écran (carte edge-to-edge du scroll).
+   */
+  edgeToEdge?: boolean;
 }
 
 function aspectFromMode(mode: MediaAspectMode): number | null {
@@ -666,6 +671,7 @@ export default function MediaCarousel({
   minHeight = 180,
   rounded = true,
   enableLightbox = true,
+  edgeToEdge = false,
 }: Props) {
   const { colors } = useThemeFlavor();
   const { width: screenW } = useWindowDimensions();
@@ -673,7 +679,10 @@ export default function MediaCarousel({
   const [lightbox, setLightbox] = useState<number | null>(null);
 
   const list = media ?? [];
-  const singleWidth = Math.max(280, screenW - 64);
+  // edgeToEdge : largeur carte = screen - padding list (16*2) — parent gère overflow
+  const singleWidth = edgeToEdge
+    ? Math.max(280, screenW - 32)
+    : Math.max(280, screenW - 64);
   const multiWidth = singleWidth;
   const cap = maxHeight ?? Math.round(screenW * 0.85);
   const frameWidth = list.length === 1 ? singleWidth : multiWidth;

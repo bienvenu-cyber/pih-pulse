@@ -6,6 +6,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
@@ -20,6 +21,7 @@ import ReplyCountBadge from '../../components/ReplyCountBadge';
 import EmptyState from '../../components/ui/EmptyState';
 import ListSkeleton from '../../components/ui/ListSkeleton';
 import LoadMoreFooter from '../../components/ui/LoadMoreFooter';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatDeadlineLabel } from '../../lib/deadline';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
@@ -277,9 +279,9 @@ export default function MissionsScreen() {
   const listHeader = (
     <View className="gap-3 mb-1">
       <View className="flex-row gap-2">
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="flex-row flex-1 items-center h-12 rounded-xl border px-3 gap-2"
+        <SoftSurface
+          variant="inset"
+          className="flex-row flex-1 items-center h-12 px-3 gap-2"
         >
           <Search size={16} color={colors.textSecondary} />
           <TextInput
@@ -290,7 +292,7 @@ export default function MissionsScreen() {
             style={{ color: colors.text }}
             className="flex-1 font-inter text-sm h-full"
           />
-        </View>
+        </SoftSurface>
         <Pressable
           onPress={() => router.push('/mission/create')}
           className="w-12 h-12 rounded-xl items-center justify-center active:opacity-90 bg-turmeric"
@@ -432,9 +434,9 @@ export default function MissionsScreen() {
             else if (mission.difficulty === 'hard') diffColor = colors.corail;
 
             return (
-              <View
-                style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                className="border rounded-2xl px-4 pt-3.5 pb-2 gap-3"
+              <SoftSurface
+                variant="card"
+                className="px-4 pt-3.5 pb-2 gap-3"
               >
                 <PostAuthorHeader
                   authorName={mission.authorName}
@@ -480,12 +482,15 @@ export default function MissionsScreen() {
                 </Pressable>
 
                 <View
-                  style={{ borderTopWidth: 1, borderTopColor: colors.border + '99' }}
-                  className="pt-1"
+                  style={{
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: colors.border + '55',
+                  }}
+                  className="pt-1.5"
                 >
                   <ReactionBar refId={mission.id} refType="mission" showIdea={false} />
                 </View>
-              </View>
+              </SoftSurface>
             );
           }}
         />

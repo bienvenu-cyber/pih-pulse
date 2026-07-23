@@ -14,6 +14,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -28,6 +29,7 @@ import ReactionBar from '../../components/ReactionBar';
 import ReplyCountBadge from '../../components/ReplyCountBadge';
 import ListSkeleton from '../../components/ui/ListSkeleton';
 import LoadMoreFooter from '../../components/ui/LoadMoreFooter';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { formatRelativeTime, formatRoleLabel } from '../../lib/formatTime';
 import type { MediaAsset } from '../../lib/media';
@@ -739,25 +741,19 @@ export default function FeedScreen() {
         </View>
 
         {fetchError && rawItems.length === 0 ? (
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl p-5 mb-3"
-          >
+          <SoftSurface variant="card" className="p-5 mb-3">
             <Text style={{ color: colors.text }} className="font-space text-sm font-bold mb-1">
               Feed indisponible
             </Text>
             <Text style={{ color: colors.textSecondary }} className="font-inter text-xs leading-5">
               {fetchError}
             </Text>
-          </View>
+          </SoftSurface>
         ) : null}
 
-        <View className="gap-3">
+        <View className="gap-4">
           {feedItems.length === 0 ? (
-            <View
-              style={{ backgroundColor: colors.card, borderColor: colors.border }}
-              className="border rounded-2xl p-6 items-center gap-2"
-            >
+            <SoftSurface variant="card" className="p-6 items-center gap-2">
               <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
                 {tab === 'all' ? 'Aucun post pour l’instant' : 'Rien dans cet onglet'}
               </Text>
@@ -778,7 +774,7 @@ export default function FeedScreen() {
                   </Text>
                 </Pressable>
               ) : null}
-            </View>
+            </SoftSurface>
           ) : (
             <>
               {visibleItems.map((item) => {
@@ -806,33 +802,35 @@ export default function FeedScreen() {
                     ? item.meta1
                     : formatRelativeTime(item.created_at);
 
-                // View racine (pas Pressable) → évite <button> imbriqués sur web
-                // (auteur, media lightbox, réactions = contrôles séparés)
+                // Carte feed : hairline légère, media full-bleed (pas de box lourde)
+                const hasMedia = !!(item.media && item.media.length > 0);
                 return (
-                  <View
+                  <SoftSurface
                     key={`${item.type}-${item.id}`}
-                    style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                    className="border rounded-2xl px-4 pt-3.5 pb-2 gap-3"
+                    variant="card"
+                    className="pb-2 gap-0"
                   >
-                    <PostAuthorHeader
-                      authorName={item.authorName || 'PIH Pulse'}
-                      authorId={item.authorId}
-                      authorAvatar={item.authorAvatar}
-                      subtitle={
-                        (item.boosts || 0) > 0
-                          ? `${item.subtitle || ''} · ⚡ ${item.boosts}`
-                          : item.subtitle
-                      }
-                      timeLabel={timeLabel}
-                      typeLabel={item.tag}
-                      typeColor={typeColor}
-                    />
+                    <View className="px-4 pt-3.5 pb-2">
+                      <PostAuthorHeader
+                        authorName={item.authorName || 'PIH Pulse'}
+                        authorId={item.authorId}
+                        authorAvatar={item.authorAvatar}
+                        subtitle={
+                          (item.boosts || 0) > 0
+                            ? `${item.subtitle || ''} · ⚡ ${item.boosts}`
+                            : item.subtitle
+                        }
+                        timeLabel={timeLabel}
+                        typeLabel={item.tag}
+                        typeColor={typeColor}
+                      />
+                    </View>
 
                     <Pressable
                       onPress={() => handleItemPress(item)}
                       accessibilityRole="button"
                       accessibilityLabel={`${item.tag} ${item.title}`}
-                      className="gap-3 active:opacity-95"
+                      className="px-4 gap-2.5 active:opacity-95"
                     >
                       <View className="gap-1.5">
                         <Text
@@ -853,7 +851,7 @@ export default function FeedScreen() {
                       </View>
 
                       {(Icon1 || Icon2 || item.type === 'event') && (
-                        <View className="flex-row gap-3.5 items-center">
+                        <View className="flex-row gap-3.5 items-center pb-1">
                           {Icon1 && item.meta1 ? (
                             <View className="flex-row items-center gap-1.5">
                               <Icon1 size={12} color={colors.textSecondary} strokeWidth={2.2} />
@@ -904,19 +902,26 @@ export default function FeedScreen() {
                       )}
                     </Pressable>
 
-                    {item.media && item.media.length > 0 ? (
-                      <MediaCarousel
-                        media={item.media}
-                        aspectMode="4:5"
-                        contentFit="cover"
-                        enableLightbox
-                      />
+                    {hasMedia ? (
+                      <View className="mt-2">
+                        <MediaCarousel
+                          media={item.media}
+                          aspectMode="4:5"
+                          contentFit="cover"
+                          enableLightbox
+                          rounded={false}
+                          edgeToEdge
+                        />
+                      </View>
                     ) : null}
 
                     {canReact && !String(item.id).startsWith('evt') && (
                       <View
-                        className="pt-1 flex-row items-center gap-2"
-                        style={{ borderTopWidth: 1, borderTopColor: colors.border + '99' }}
+                        className="mx-4 pt-2 mt-1 flex-row items-center gap-2"
+                        style={{
+                          borderTopWidth: StyleSheet.hairlineWidth,
+                          borderTopColor: colors.border + '88',
+                        }}
                       >
                         <ReplyCountBadge count={item.replyCount} />
                         <View className="flex-1">
@@ -929,7 +934,7 @@ export default function FeedScreen() {
                         </View>
                       </View>
                     )}
-                  </View>
+                  </SoftSurface>
                 );
               })}
               <LoadMoreFooter

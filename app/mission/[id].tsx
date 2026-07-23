@@ -23,6 +23,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ReplySection from '../../components/ReplySection';
+import ThemedStackHeader from '../../components/ThemedStackHeader';
+import SoftSurface from '../../components/ui/SoftSurface';
 import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
@@ -236,28 +238,12 @@ export default function MissionDetailsScreen() {
             : mission.status;
 
   return (
-    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
-      <View
-        style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }}
-        className="h-14 flex-row items-center justify-between px-4 border-b"
-      >
-        <Pressable
-          onPress={() => router.back()}
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="w-10 h-10 rounded-full border items-center justify-center"
-        >
-          <ArrowLeft size={18} color={colors.text} />
-        </Pressable>
-        <View className="flex-1 px-3 items-center">
-          <Text style={{ color: colors.text }} className="font-space text-base font-bold" numberOfLines={1}>
-            Mission
-          </Text>
-          <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]" numberOfLines={1}>
-            {mission.project} · {statusLabel}
-          </Text>
-        </View>
-        <View className="w-10 h-10" />
-      </View>
+    <View style={{ backgroundColor: colors.bg }} className="flex-1">
+      <ThemedStackHeader
+        title="Mission"
+        subtitle={`${mission.project} · ${statusLabel}`}
+        onBack={() => router.back()}
+      />
 
       <KeyboardSafe className="flex-1" offset={0}>
       <ScrollView
@@ -267,10 +253,7 @@ export default function MissionDetailsScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 gap-3 mb-4"
-        >
+        <SoftSurface variant="card" className="p-5 gap-3 mb-4">
           <Pressable onPress={() => mission.projectId && router.push(`/project/${mission.projectId}`)}>
             <Text
               style={{ color: colors.turmeric }}
@@ -297,13 +280,10 @@ export default function MissionDetailsScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </SoftSurface>
 
         <View className="flex-row gap-3 mb-4">
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="flex-1 border rounded-2xl p-4 gap-2"
-          >
+          <SoftSurface variant="card" className="flex-1 p-4 gap-2">
             <Award size={14} color={colors.turmeric} />
             <Text style={{ color: colors.text }} className="font-space text-xl font-bold">
               {mission.reward}
@@ -311,11 +291,8 @@ export default function MissionDetailsScreen() {
             <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
               Élan récompense
             </Text>
-          </View>
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="flex-1 border rounded-2xl p-4 gap-2"
-          >
+          </SoftSurface>
+          <SoftSurface variant="card" className="flex-1 p-4 gap-2">
             <Clock size={14} color={colors.textSecondary} />
             <Text style={{ color: colors.text }} className="font-space text-lg font-bold">
               {mission.duration}
@@ -323,7 +300,7 @@ export default function MissionDetailsScreen() {
             <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
               {mission.deadlineDate ? `Échéance ${mission.deadlineDate}` : 'Échéance'}
             </Text>
-          </View>
+          </SoftSurface>
         </View>
 
         {mission.skills?.length > 0 ? (
@@ -331,8 +308,8 @@ export default function MissionDetailsScreen() {
             {mission.skills.map((skill: string) => (
               <View
                 key={skill}
-                style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-                className="border px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: colors.deep }}
+                className="px-2.5 py-1 rounded-full"
               >
                 <Text
                   style={{ color: colors.textSecondary }}
@@ -351,24 +328,18 @@ export default function MissionDetailsScreen() {
           </Text>
         ) : null}
 
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 gap-2 mb-4"
-        >
+        <SoftSurface variant="card" className="p-4 gap-2 mb-4">
           <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
             Description
           </Text>
           <Text style={{ color: colors.textSecondary }} className="font-inter text-sm leading-6">
             {mission.description}
           </Text>
-        </View>
+        </SoftSurface>
 
         {/* Livrable affiché si soumis */}
         {(mission.deliverableUrl || isReview || isCompleted) && mission.deliverableUrl ? (
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl p-4 gap-2 mb-4"
-          >
+          <SoftSurface variant="card" className="p-4 gap-2 mb-4">
             <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
               Livrable
             </Text>
@@ -382,7 +353,7 @@ export default function MissionDetailsScreen() {
                 {mission.deliverableNote}
               </Text>
             ) : null}
-          </View>
+          </SoftSurface>
         ) : null}
 
         {/* ── CTA contributeur : postuler ── */}
@@ -753,6 +724,6 @@ export default function MissionDetailsScreen() {
           </View>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }

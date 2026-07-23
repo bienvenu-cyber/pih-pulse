@@ -1,0 +1,34 @@
+# Dependencies & Build artifacts (Android & iOS)
+node_modules/
+.expo/
+dist/
+web-build/
+*.apk
+*.aab
+*.ipa
+*.xcarchive
+*.tar.gz
+*.zip
+.kotlin/
+.metro-health-check*
+
+# iOS specific build cache & local credentials
+ios/DerivedData/
+ios/Pods/
+*.mobileprovision
+*.p12
+*.p8
+*.cer
+
+# Version Control & Local Cache
+.git/
+secrets/
+.env*.local
+
+# Design assets & Mockups (hors app/assets)
+screen-mockups/
+docs/
+
+# Documentation & SQL Dumps non requis pour la compilation
+*.md
+*.sql

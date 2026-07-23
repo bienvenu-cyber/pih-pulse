@@ -17,11 +17,13 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import ListSkeleton from './ui/ListSkeleton';
+import SoftSurface from './ui/SoftSurface';
 import { useThemeFlavor } from '../hooks/useThemeFlavor';
 import { formatRelativeTime } from '../lib/formatTime';
 import {
@@ -309,10 +311,7 @@ export default function ReplySection({ refType, refId, refreshKey = 0 }: Props) 
     replies.reduce((n, r) => n + 1 + (r.children?.length || 0), 0) || 0;
 
   return (
-    <View
-      style={{ backgroundColor: colors.card, borderColor: colors.border }}
-      className="border rounded-3xl p-4 gap-3"
-    >
+    <SoftSurface variant="card" className="p-4 gap-3">
       <View className="flex-row items-center gap-2">
         <MessageCircle size={16} color={colors.turmeric} strokeWidth={2.2} />
         <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold flex-1">
@@ -352,11 +351,12 @@ export default function ReplySection({ refType, refId, refreshKey = 0 }: Props) 
       )}
 
       {replyTo ? (
-        <View
-          style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-          className="border rounded-xl px-3 py-2 flex-row items-center gap-2"
-        >
-          <Text style={{ color: colors.textSecondary }} className="font-inter text-[11px] flex-1" numberOfLines={1}>
+        <SoftSurface variant="plain" className="px-3 py-2 flex-row items-center gap-2">
+          <Text
+            style={{ color: colors.textSecondary }}
+            className="font-inter text-[11px] flex-1"
+            numberOfLines={1}
+          >
             Réponse à {replyTo.author?.full_name || '…'}
           </Text>
           <Pressable onPress={() => setReplyTo(null)}>
@@ -364,20 +364,17 @@ export default function ReplySection({ refType, refId, refreshKey = 0 }: Props) 
               Annuler
             </Text>
           </Pressable>
-        </View>
+        </SoftSurface>
       ) : null}
 
       {suggestions.length > 0 ? (
-        <View
-          style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-          className="border rounded-xl overflow-hidden"
-        >
+        <SoftSurface variant="inset" className="overflow-hidden">
           {suggestions.map((s) => (
             <Pressable
               key={s.id}
               onPress={() => applyMention(s.username)}
-              className="px-3 py-2.5 border-b"
-              style={{ borderBottomColor: colors.border }}
+              className="px-3 py-2.5"
+              style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
             >
               <Text style={{ color: colors.text }} className="font-inter text-[12px] font-semibold">
                 @{s.username}
@@ -389,13 +386,10 @@ export default function ReplySection({ refType, refId, refreshKey = 0 }: Props) 
               ) : null}
             </Pressable>
           ))}
-        </View>
+        </SoftSurface>
       ) : null}
 
-      <View
-        style={{ backgroundColor: colors.deep, borderColor: colors.border }}
-        className="border rounded-2xl px-3 py-2 flex-row items-end gap-2"
-      >
+      <SoftSurface variant="inset" className="px-3 py-2 flex-row items-end gap-2">
         <TextInput
           value={body}
           onChangeText={onChangeBody}
@@ -430,7 +424,7 @@ export default function ReplySection({ refType, refId, refreshKey = 0 }: Props) 
             <Send size={16} color="#0D0B05" strokeWidth={2.4} />
           )}
         </Pressable>
-      </View>
-    </View>
+      </SoftSurface>
+    </SoftSurface>
   );
 }

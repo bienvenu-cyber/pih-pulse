@@ -38,7 +38,9 @@ import ProfileToggles, {
   type ProfileToggleKey,
   type ProfileToggleState,
 } from '../../components/ProfileToggles';
+import { GlassCard } from '../../components/ui/Glass';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { tryGrantProfileCompleteBonus } from '../../lib/hub';
 import { getProfileCompleteness, IMPACT_POINTS } from '../../lib/impact';
@@ -486,11 +488,10 @@ export default function ProfileScreen() {
           </Pressable>
         ) : null}
 
-        {/* Hero */}
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 mb-3 overflow-hidden"
-        >
+        {/* Hero glass — moment premium profil */}
+        <View className="mb-3 overflow-hidden rounded-3xl">
+        <GlassCard>
+        <View className="p-4">
           <View className="flex-row items-start gap-3.5">
             <Pressable onPress={handleAvatarUpload} disabled={avatarBusy} className="relative">
               <View
@@ -643,11 +644,13 @@ export default function ProfileScreen() {
             </View>
           ) : null}
         </View>
+        </GlassCard>
+        </View>
 
-        {/* Bio + skills */}
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 mb-3 gap-3"
+        {/* Bio + skills — solid (métier) */}
+        <SoftSurface
+          variant="card"
+          className="p-4 mb-3 gap-3"
         >
           <View className="flex-row items-center justify-between">
             <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
@@ -703,7 +706,7 @@ export default function ProfileScreen() {
               </Text>
             </Pressable>
           )}
-        </View>
+        </SoftSurface>
 
         {/* Mes projets — carrousel */}
         {myProjects.length > 0 ? (
@@ -723,13 +726,16 @@ export default function ProfileScreen() {
                 <Pressable
                   key={p.id}
                   onPress={() => router.push(`/project/${p.id}`)}
-                  style={{
-                    backgroundColor: colors.card,
-                    borderColor: p.isLead ? colors.turmeric + '55' : colors.border,
-                    width: 168,
-                  }}
-                  className="border rounded-2xl p-3.5 active:opacity-90"
+                  className="active:opacity-90"
                 >
+                  <SoftSurface
+                    variant="card"
+                    style={{
+                      borderColor: p.isLead ? colors.turmeric + '55' : undefined,
+                      width: 168,
+                    }}
+                    className="p-3.5"
+                  >
                   <Text
                     style={{ color: colors.text }}
                     className="font-space text-[13px] font-bold"
@@ -755,6 +761,7 @@ export default function ProfileScreen() {
                       </Text>
                     ) : null}
                   </View>
+                  </SoftSurface>
                 </Pressable>
               ))}
             </ScrollView>
@@ -762,9 +769,9 @@ export default function ProfileScreen() {
         ) : null}
 
         {/* Menu (infos, impact, portfolio…) */}
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl overflow-hidden mb-3"
+        <SoftSurface
+          variant="card"
+          className="overflow-hidden mb-3"
         >
           {menu.map((item, idx) => {
             const Icon = item.icon;
@@ -796,7 +803,7 @@ export default function ProfileScreen() {
               </Pressable>
             );
           })}
-        </View>
+        </SoftSurface>
 
         {/* Contrôles — bas de page, fermé par défaut */}
         <ProfileToggles
@@ -807,9 +814,9 @@ export default function ProfileScreen() {
         />
 
         {/* Thème */}
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 mb-4 gap-3"
+        <SoftSurface
+          variant="card"
+          className="p-4 mb-4 gap-3"
         >
           <View className="flex-row items-center gap-2">
             <Palette size={15} color={colors.turmeric} />
@@ -845,11 +852,11 @@ export default function ProfileScreen() {
               );
             })}
           </View>
-        </View>
+        </SoftSurface>
 
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-2xl p-4 mb-4 gap-1"
+        <SoftSurface
+          variant="card"
+          className="p-4 mb-4 gap-1"
         >
           <Text
             style={{ color: colors.textSecondary }}
@@ -865,7 +872,7 @@ export default function ProfileScreen() {
               {profile.phone}
             </Text>
           ) : null}
-        </View>
+        </SoftSurface>
 
         <Pressable
           onPress={handleLogout}

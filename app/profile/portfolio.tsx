@@ -3,8 +3,6 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
-  Platform,
-  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -14,7 +12,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ThemedStackHeader from '../../components/ThemedStackHeader';
 import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import PressableScale from '../../components/ui/PressableScale';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { haptic } from '../../lib/haptics';
 import { tryGrantProfileCompleteBonus } from '../../lib/hub';
 import { supabase } from '../../lib/supabase';
 
@@ -68,6 +69,7 @@ export default function ProfilePortfolioScreen() {
 
   const save = async () => {
     if (!userId) return;
+    void haptic('medium');
     setSaving(true);
     setError('');
     setMsg('');
@@ -84,9 +86,11 @@ export default function ProfilePortfolioScreen() {
         .eq('id', userId);
       if (err) throw err;
       const bonus = await tryGrantProfileCompleteBonus(userId);
+      void haptic('success');
       setMsg(bonus ? 'Portfolio OK · +20 Élan profil complet !' : 'Portfolio enregistré');
       setTimeout(() => router.back(), 700);
     } catch (e: any) {
+      void haptic('light');
       setError(e?.message || 'Erreur');
     } finally {
       setSaving(false);
@@ -110,13 +114,13 @@ export default function ProfilePortfolioScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          <Text style={{ color: colors.textSecondary }} className="font-inter text-xs leading-5 mb-1">
+          <Text style={{ color: colors.textSecondary }} className="font-inter text-xs leading-5 mb-1 px-1">
             Ces liens aident les leads à évaluer ton profil (matching talent ↔ projets).
           </Text>
 
-          {error ? <Text className="text-corail font-inter text-xs">{error}</Text> : null}
+          {error ? <Text className="text-corail font-inter text-xs px-1">{error}</Text> : null}
           {msg ? (
-            <Text style={{ color: colors.kaki }} className="font-inter text-xs">
+            <Text style={{ color: colors.kaki }} className="font-inter text-xs px-1">
               {msg}
             </Text>
           ) : null}
@@ -125,14 +129,11 @@ export default function ProfilePortfolioScreen() {
             <View key={f.key} className="gap-1.5">
               <Text
                 style={{ color: colors.textSecondary }}
-                className="font-inter text-[10px] uppercase font-bold"
+                className="font-inter text-[10px] uppercase font-bold px-1"
               >
                 {f.label}
               </Text>
-              <View
-                style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                className="border rounded-xl px-3 h-11 flex-row items-center"
-              >
+              <SoftSurface className="px-3 h-11 flex-row items-center">
                 <TextInput
                   value={values[f.key]}
                   onChangeText={(t) => setValues((v) => ({ ...v, [f.key]: t }))}
@@ -144,8 +145,9 @@ export default function ProfilePortfolioScreen() {
                   className="font-inter text-sm h-full"
                 />
                 {values[f.key] ? (
-                  <Pressable
+                  <PressableScale
                     onPress={() => {
+                      void haptic('light');
                       const u = values[f.key];
                       Linking.openURL(u.startsWith('http') ? u : `https://${u}`);
                     }}
@@ -153,23 +155,23 @@ export default function ProfilePortfolioScreen() {
                     <Text style={{ color: colors.turmeric }} className="font-inter text-[10px] font-bold">
                       Ouvrir
                     </Text>
-                  </Pressable>
+                  </PressableScale>
                 ) : null}
-              </View>
+              </SoftSurface>
             </View>
           ))}
 
-          <Pressable
+          <PressableScale
             onPress={save}
             disabled={saving}
-            className="bg-turmeric h-12 rounded-xl items-center justify-center mt-2"
+            className="bg-turmeric h-12 rounded-2xl items-center justify-center mt-3"
           >
             {saving ? (
               <ActivityIndicator color="#0D0B05" />
             ) : (
               <Text className="text-malt-deep font-inter-bold text-sm font-bold">Enregistrer</Text>
             )}
-          </Pressable>
+          </PressableScale>
         </ScrollView>
       </KeyboardSafe>
     </SafeAreaView>

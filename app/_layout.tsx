@@ -25,6 +25,8 @@ import {
 } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 
+import * as Notifications from 'expo-notifications';
+
 export {
   // Catch any errors thrown by the Layout component.
   ErrorBoundary
@@ -86,6 +88,23 @@ function RootLayoutNav() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    // Deep linking au tap sur une notif push native
+    if (Platform.OS === 'web') return;
+    try {
+      const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response?.notification?.request?.content?.data;
+        const route = data?.route;
+        if (typeof route === 'string' && route.startsWith('/')) {
+          router.push(route as any);
+        }
+      });
+      return () => sub.remove();
+    } catch (e) {
+      console.warn('[push tap listener]', e);
+    }
+  }, [router]);
 
   useEffect(() => {
     async function loadSavedTheme() {

@@ -6,7 +6,7 @@ import { ArrowLeft } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
+  StyleSheet,
   ScrollView,
   Text,
   View,
@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import KeyboardSafe from '../ui/KeyboardSafe';
+import PressableScale from '../ui/PressableScale';
 
 interface Props {
   onBack?: () => void;
@@ -64,17 +65,20 @@ export default function AuthShell({
 
       <View className="px-5 pt-2 pb-1 flex-row items-center">
         {onBack ? (
-          <Pressable
+          <PressableScale
             onPress={onBack}
             hitSlop={12}
+            hapticKind="selection"
+            scaleTo={0.92}
             style={{
               backgroundColor: colors.card,
-              borderColor: colors.border,
+              borderColor: colors.border + '66',
+              borderWidth: StyleSheet.hairlineWidth,
             }}
-            className="w-11 h-11 rounded-full border items-center justify-center active:opacity-80"
+            className="w-11 h-11 rounded-full items-center justify-center"
           >
             <ArrowLeft size={18} color={colors.text} strokeWidth={2.2} />
-          </Pressable>
+          </PressableScale>
         ) : (
           <View className="w-11" />
         )}
@@ -142,8 +146,8 @@ export default function AuthShell({
               paddingHorizontal: 24,
               paddingTop: 8,
               paddingBottom: Math.max(insets.bottom, 16),
-              borderTopWidth: 1,
-              borderTopColor: colors.border + '88',
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.border + '66',
               backgroundColor: colors.bg,
             }}
           >

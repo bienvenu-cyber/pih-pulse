@@ -12,12 +12,15 @@ import {
   Users,
 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ReplySection from '../../components/ReplySection';
+import ThemedStackHeader from '../../components/ThemedStackHeader';
 import EmptyState from '../../components/ui/EmptyState';
 import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import PressableScale from '../../components/ui/PressableScale';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { joinProject, updateProjectStatus } from '../../lib/hub';
 import {
@@ -334,35 +337,28 @@ export default function ProjectDetailsScreen() {
   const isMember = project.team?.some((m: any) => m.id === meId);
 
   return (
-    <SafeAreaView style={{ backgroundColor: colors.bg }} className="flex-1">
-      <View style={{ backgroundColor: colors.nav, borderBottomColor: colors.border }} className="h-14 flex-row items-center justify-between px-4 border-b">
-        <Pressable onPress={handleBack} style={{ backgroundColor: colors.card, borderColor: colors.border }} className="w-10 h-10 rounded-full border items-center justify-center">
-          <ArrowLeft size={18} color={colors.text} />
-        </Pressable>
-        <View className="flex-1 px-3 items-center">
-          <Text style={{ color: colors.text }} className="font-space text-base font-bold" numberOfLines={1}>
-            {project.name}
-          </Text>
-          <Text style={{ color: colors.textSecondary }} className="font-inter text-[10px]">
-            {project.statusLabel} · {project.membersCount}
-          </Text>
-        </View>
-        {meId && project.creatorId === meId ? (
-          <Pressable
-            onPress={() =>
-              router.push({ pathname: '/project/edit', params: { id: project.id } })
-            }
-            accessibilityRole="button"
-            accessibilityLabel="Modifier le projet"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="w-10 h-10 rounded-full border items-center justify-center active:opacity-80"
-          >
-            <Pencil size={16} color={colors.turmeric} />
-          </Pressable>
-        ) : (
-          <View className="w-10 h-10" />
-        )}
-      </View>
+    <View style={{ backgroundColor: colors.bg }} className="flex-1">
+      <ThemedStackHeader
+        title={project.name}
+        subtitle={`${project.statusLabel} · ${project.membersCount}`}
+        onBack={handleBack}
+        right={
+          meId && project.creatorId === meId ? (
+            <PressableScale
+              onPress={() =>
+                router.push({ pathname: '/project/edit', params: { id: project.id } })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Modifier le projet"
+              hapticKind="selection"
+              scaleTo={0.9}
+              className="w-11 h-11 items-center justify-center"
+            >
+              <Pencil size={18} color={colors.turmeric} />
+            </PressableScale>
+          ) : undefined
+        }
+      />
 
       <KeyboardSafe className="flex-1" offset={0}>
       <ScrollView
@@ -373,13 +369,7 @@ export default function ProjectDetailsScreen() {
         keyboardDismissMode="on-drag"
       >
         {pendingInvite ? (
-          <View
-            style={{
-              backgroundColor: colors.turmeric + '14',
-              borderColor: colors.turmeric + '55',
-            }}
-            className="border rounded-2xl p-4 gap-3 mb-4"
-          >
+          <SoftSurface variant="card" className="p-4 gap-3 mb-4" style={{ borderColor: colors.turmeric + '55' }}>
             <Text style={{ color: colors.text }} className="font-space text-sm font-bold">
               Invitation à rejoindre
             </Text>
@@ -409,14 +399,11 @@ export default function ProjectDetailsScreen() {
                 )}
               </Pressable>
             </View>
-          </View>
+          </SoftSurface>
         ) : null}
 
-        {/* Hero */}
-        <View
-          style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          className="border rounded-3xl p-5 gap-3 mb-4"
-        >
+        {/* Hero immersif */}
+        <SoftSurface variant="card" className="p-5 gap-3 mb-4">
           <View className="flex-row justify-between items-start gap-3">
             <Text style={{ color: colors.text }} className="font-space text-[22px] font-bold flex-1 leading-7">
               {project.name}
@@ -453,21 +440,18 @@ export default function ProjectDetailsScreen() {
               <Text style={{ color: colors.textSecondary }} className="font-inter text-xs font-medium">{project.location}</Text>
             </View>
           </View>
-        </View>
+        </SoftSurface>
 
-        <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="border rounded-3xl p-5 gap-3 mb-4">
+        <SoftSurface variant="card" className="p-5 gap-3 mb-4">
           <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">À propos</Text>
           <Text style={{ color: colors.textSecondary }} className="font-inter text-sm leading-6">
             {project.description}
           </Text>
-        </View>
+        </SoftSurface>
 
         {/* Rôles recherchés */}
         {project.rolesNeeded?.length > 0 ? (
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-3xl p-5 gap-3 mb-4"
-          >
+          <SoftSurface variant="card" className="p-5 gap-3 mb-4">
             <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
               Rôles recherchés
             </Text>
@@ -484,12 +468,12 @@ export default function ProjectDetailsScreen() {
                 </View>
               ))}
             </View>
-          </View>
+          </SoftSurface>
         ) : null}
 
         {/* Tech Stack Badges */}
         {project.skills?.length > 0 ? (
-          <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="border rounded-3xl p-5 gap-3 mb-6">
+          <SoftSurface variant="card" className="p-5 gap-3 mb-6">
             <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">Stack Technique</Text>
             <View className="flex-row flex-wrap gap-1.5">
               {project.skills.map((skill: string) => (
@@ -498,11 +482,11 @@ export default function ProjectDetailsScreen() {
                 </View>
               ))}
             </View>
-          </View>
+          </SoftSurface>
         ) : null}
 
         {/* L'Équipe */}
-        <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="border rounded-3xl p-5 gap-4 mb-6">
+        <SoftSurface variant="card" className="p-5 gap-4 mb-6">
           <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">L'Équipe ({project.team.length})</Text>
           <View className="gap-3">
             {project.team.map((member: any, index: number) => (
@@ -521,18 +505,18 @@ export default function ProjectDetailsScreen() {
               </Pressable>
             ))}
           </View>
-        </View>
+        </SoftSurface>
 
         {/* Missions du projet */}
         {project.missions.length > 0 && (
-          <View style={{ backgroundColor: colors.card, borderColor: colors.border }} className="border rounded-3xl p-5 gap-4 mb-6">
+          <SoftSurface variant="card" className="p-5 gap-4 mb-6">
             <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">Missions en cours</Text>
             <View className="gap-3">
               {project.missions.map((mission: any) => (
                 <Pressable 
                   key={mission.id}
                   onPress={() => handleMissionPress(mission.id)}
-                  style={{ backgroundColor: colors.deep, borderColor: colors.border }} className="flex-row justify-between items-center border p-4 rounded-2xl active:opacity-95"
+                  style={{ backgroundColor: colors.deep }} className="flex-row justify-between items-center p-4 rounded-2xl active:opacity-95"
                 >
                   <View className="flex-1 pr-4 gap-1">
                     <Text style={{ color: colors.text }} className="font-inter text-xs font-semibold leading-5" numberOfLines={1}>
@@ -557,15 +541,12 @@ export default function ProjectDetailsScreen() {
                 </Pressable>
               ))}
             </View>
-          </View>
+          </SoftSurface>
         )}
 
         {/* Progression statut (créateur) */}
         {meId && project.creatorId === meId && (
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl p-4 gap-3 mb-6"
-          >
+          <SoftSurface variant="card" className="p-4 gap-3 mb-6">
             <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
               Progression du projet
             </Text>
@@ -596,7 +577,7 @@ export default function ProjectDetailsScreen() {
                 );
               })}
             </View>
-          </View>
+          </SoftSurface>
         )}
 
         {id && typeof id === 'string' && id.length > 10 ? (
@@ -612,7 +593,7 @@ export default function ProjectDetailsScreen() {
         style={{
           backgroundColor: colors.nav,
           borderTopColor: colors.border,
-          borderTopWidth: 1,
+          borderTopWidth: StyleSheet.hairlineWidth,
         }}
         className="px-4 pt-3 pb-4"
       >
@@ -679,6 +660,6 @@ export default function ProjectDetailsScreen() {
           </View>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }

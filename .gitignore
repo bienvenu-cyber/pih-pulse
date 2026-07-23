@@ -49,9 +49,11 @@ OAUTH_CONFIG.md
 # Supabase CLI local link cache (ne pas versionner)
 supabase/.temp/
 
-# Store / EAS secrets (ne jamais committer)
+# Store / EAS secrets / Binaries
 secrets/
 *.p8
+*.apk
+*.aab
 google-services.json
 GoogleService-Info.plist
 

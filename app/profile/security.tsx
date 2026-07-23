@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -14,7 +13,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ThemedStackHeader from '../../components/ThemedStackHeader';
 import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import PressableScale from '../../components/ui/PressableScale';
+import SoftSurface from '../../components/ui/SoftSurface';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
+import { haptic } from '../../lib/haptics';
 import { supabase } from '../../lib/supabase';
 
 export default function ProfileSecurityScreen() {
@@ -51,20 +53,24 @@ export default function ProfileSecurityScreen() {
   const updateEmail = async () => {
     const next = newEmail.trim().toLowerCase();
     if (!next || next === email) {
+      void haptic('light');
       setError('Saisis une nouvelle adresse e-mail.');
       return;
     }
+    void haptic('medium');
     setBusyEmail(true);
     setError('');
     setMsg('');
     try {
       const { error: err } = await supabase.auth.updateUser({ email: next });
       if (err) throw err;
+      void haptic('success');
       setMsg(
         'E-mail mis à jour. Si la confirmation est activée, vérifie ta boîte (ancien + nouveau).'
       );
       setEmail(next);
     } catch (e: any) {
+      void haptic('light');
       setError(e?.message || 'Impossible de changer l’e-mail.');
     } finally {
       setBusyEmail(false);
@@ -73,23 +79,28 @@ export default function ProfileSecurityScreen() {
 
   const updatePassword = async () => {
     if (password.length < 8) {
+      void haptic('light');
       setError('Mot de passe : 8 caractères minimum.');
       return;
     }
     if (password !== confirm) {
+      void haptic('light');
       setError('Les mots de passe ne correspondent pas.');
       return;
     }
+    void haptic('medium');
     setBusyPass(true);
     setError('');
     setMsg('');
     try {
       const { error: err } = await supabase.auth.updateUser({ password });
       if (err) throw err;
+      void haptic('success');
       setPassword('');
       setConfirm('');
       setMsg('Mot de passe mis à jour.');
     } catch (e: any) {
+      void haptic('light');
       setError(e?.message || 'Impossible de changer le mot de passe.');
     } finally {
       setBusyPass(false);
@@ -98,9 +109,11 @@ export default function ProfileSecurityScreen() {
 
   const deleteAccount = async () => {
     if (deleteConfirm.trim().toUpperCase() !== 'SUPPRIMER') {
+      void haptic('light');
       setError('Tape SUPPRIMER pour confirmer la suppression.');
       return;
     }
+    void haptic('medium');
     const run = async () => {
       setBusyDelete(true);
       setError('');
@@ -113,7 +126,6 @@ export default function ProfileSecurityScreen() {
         const hasPasswordProvider =
           providers.includes('email') || providers.length === 0;
 
-        // Re-auth e-mail/mdp uniquement (OAuth = SUPPRIMER suffit)
         if (hasPasswordProvider) {
           if (!deletePassword || deletePassword.length < 6) {
             setError('Confirme avec ton mot de passe pour supprimer le compte.');
@@ -133,7 +145,6 @@ export default function ProfileSecurityScreen() {
 
         const { error: rpcErr } = await supabase.rpc('delete_own_account');
         if (rpcErr) {
-          // Fallback soft : anonymise profil + signOut si RPC absente
           const {
             data: { user },
           } = await supabase.auth.getUser();
@@ -207,18 +218,15 @@ export default function ProfileSecurityScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {error ? <Text className="text-corail font-inter text-xs">{error}</Text> : null}
+          {error ? <Text className="text-corail font-inter text-xs px-1">{error}</Text> : null}
           {msg ? (
-            <Text style={{ color: colors.kaki }} className="font-inter text-xs leading-5">
+            <Text style={{ color: colors.kaki }} className="font-inter text-xs leading-5 px-1">
               {msg}
             </Text>
           ) : null}
 
           {/* Email */}
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl p-4 gap-3"
-          >
+          <SoftSurface className="p-4 gap-3">
             <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
               Adresse e-mail
             </Text>
@@ -240,10 +248,10 @@ export default function ProfileSecurityScreen() {
                 className="font-inter text-sm h-full"
               />
             </View>
-            <Pressable
+            <PressableScale
               onPress={updateEmail}
               disabled={busyEmail}
-              className="bg-turmeric h-11 rounded-xl items-center justify-center"
+              className="bg-turmeric h-11 rounded-xl items-center justify-center mt-1"
             >
               {busyEmail ? (
                 <ActivityIndicator color="#0D0B05" />
@@ -252,14 +260,11 @@ export default function ProfileSecurityScreen() {
                   Mettre à jour l’e-mail
                 </Text>
               )}
-            </Pressable>
-          </View>
+            </PressableScale>
+          </SoftSurface>
 
           {/* Password */}
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="border rounded-2xl p-4 gap-3"
-          >
+          <SoftSurface className="p-4 gap-3">
             <Text style={{ color: colors.text }} className="font-space text-[15px] font-bold">
               Mot de passe
             </Text>
@@ -291,10 +296,10 @@ export default function ProfileSecurityScreen() {
                 className="font-inter text-sm h-full"
               />
             </View>
-            <Pressable
+            <PressableScale
               onPress={updatePassword}
               disabled={busyPass}
-              className="bg-turmeric h-11 rounded-xl items-center justify-center"
+              className="bg-turmeric h-11 rounded-xl items-center justify-center mt-1"
             >
               {busyPass ? (
                 <ActivityIndicator color="#0D0B05" />
@@ -303,16 +308,15 @@ export default function ProfileSecurityScreen() {
                   Changer le mot de passe
                 </Text>
               )}
-            </Pressable>
-          </View>
+            </PressableScale>
+          </SoftSurface>
 
           {/* Suppression compte */}
-          <View
+          <SoftSurface
             style={{
-              backgroundColor: colors.card,
               borderColor: colors.corail + '55',
             }}
-            className="border rounded-2xl p-4 gap-3"
+            className="p-4 gap-3"
           >
             <Text style={{ color: colors.corail }} className="font-space text-[15px] font-bold">
               Zone danger
@@ -352,11 +356,11 @@ export default function ProfileSecurityScreen() {
                 className="font-inter text-sm h-full"
               />
             </View>
-            <Pressable
+            <PressableScale
               onPress={deleteAccount}
               disabled={busyDelete}
               style={{ backgroundColor: colors.corail + '22', borderColor: colors.corail }}
-              className="border h-11 rounded-xl items-center justify-center"
+              className="border h-11 rounded-xl items-center justify-center mt-1"
             >
               {busyDelete ? (
                 <ActivityIndicator color={colors.corail} />
@@ -365,8 +369,8 @@ export default function ProfileSecurityScreen() {
                   Supprimer mon compte
                 </Text>
               )}
-            </Pressable>
-          </View>
+            </PressableScale>
+          </SoftSurface>
         </ScrollView>
       </KeyboardSafe>
     </SafeAreaView>

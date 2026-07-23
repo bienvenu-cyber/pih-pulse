@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, Check, CheckCheck, CheckCircle, Send } from 'lucide-react-native';
+import { AlertTriangle, Check, CheckCheck, CheckCircle, Send } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -7,14 +7,19 @@ import {
   NativeSyntheticEvent,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
+import ThemedStackHeader from '../../components/ThemedStackHeader';
+import { GlassCard } from '../../components/ui/Glass';
 import KeyboardSafe from '../../components/ui/KeyboardSafe';
 import { ScreenSkeleton } from '../../components/ui/ListSkeleton';
+import SoftSurface from '../../components/ui/SoftSurface';
+import PressableScale from '../../components/ui/PressableScale';
 import { useThemeFlavor } from '../../hooks/useThemeFlavor';
 import { markProjectChatRead } from '../../lib/chatRead';
 import { formatRoleLabel, getInitials } from '../../lib/formatTime';
@@ -563,81 +568,42 @@ export default function ChatRoomScreen() {
   }
 
   return (
-    <SafeAreaView
-      style={{ backgroundColor: colors.bg }}
-      className="flex-1"
-      edges={['top', 'left', 'right']}
-    >
-      {/* Header thread — style messenger : retour nu + avatar + nom */}
-      <View
-        style={{
-          borderBottomColor: colors.border + '99',
-          borderBottomWidth: 0.5,
-          minHeight: 56,
-          paddingHorizontal: 4,
-        }}
-        className="flex-row items-center gap-1"
-      >
-        <Pressable
-          onPress={handleBack}
-          accessibilityRole="button"
-          accessibilityLabel="Retour"
-          hitSlop={10}
-          className="w-11 h-11 items-center justify-center active:opacity-55"
-        >
-          <ArrowLeft size={24} color={colors.text} strokeWidth={1.85} />
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            if (!isProjectChat && themProfile.id) {
-              router.push(`/profile/${themProfile.id}` as any);
-            } else if (isProjectChat && projectId) {
-              router.push(`/project/${projectId}` as any);
-            }
-          }}
-          className="flex-1 flex-row items-center gap-2.5 pr-3 active:opacity-80"
-        >
-          <ProfileAvatar
-            uri={themProfile.avatarUrl}
-            name={themProfile.name}
-            initials={themProfile.initials}
-            size={36}
-            bg={colors.card}
-            borderColor={colors.border}
-            textColor={colors.text}
-          />
-          <View className="flex-1">
-            <Text
-              style={{ color: colors.text }}
-              className="font-space text-[15px] font-bold"
-              numberOfLines={1}
-            >
-              {themProfile.name}
-            </Text>
-            {!!themProfile.role && (
-              <Text
-                style={{ color: colors.textSecondary }}
-                className="font-inter text-[11px]"
-                numberOfLines={1}
-              >
-                {themProfile.role}
-              </Text>
-            )}
-          </View>
-        </Pressable>
-      </View>
+    <View style={{ backgroundColor: colors.bg }} className="flex-1">
+      <ThemedStackHeader
+        title={themProfile.name}
+        subtitle={themProfile.role || undefined}
+        onBack={handleBack}
+        right={
+          <PressableScale
+            onPress={() => {
+              if (!isProjectChat && themProfile.id) {
+                router.push(`/profile/${themProfile.id}` as any);
+              } else if (isProjectChat && projectId) {
+                router.push(`/project/${projectId}` as any);
+              }
+            }}
+            hapticKind="selection"
+            scaleTo={0.92}
+            className="pr-1"
+          >
+            <ProfileAvatar
+              uri={themProfile.avatarUrl}
+              name={themProfile.name}
+              initials={themProfile.initials}
+              size={32}
+              bg={colors.card}
+              borderColor={colors.border}
+              textColor={colors.text}
+            />
+          </PressableScale>
+        }
+      />
 
-      {/* Pinned Project Briefing (Floating Glassmorphism Card) */}
+      {/* Brief projet — glass card */}
       {isProjectChat && themProfile && (
         <View className="px-4 pt-3 pb-1 z-10">
-          <View 
-            style={{
-              backdropFilter: 'blur(20px)',
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            } as any}
-            className="border p-4 rounded-3xl gap-2"
-          >
+          <GlassCard>
+          <View className="p-4 gap-2">
             {infoExpanded ? (
               <View className="gap-2.5 pb-1">
                 <View className="flex-row justify-between items-center">
@@ -679,6 +645,7 @@ export default function ChatRoomScreen() {
               </Pressable>
             )}
           </View>
+          </GlassCard>
         </View>
       )}
 
@@ -800,19 +767,17 @@ export default function ChatRoomScreen() {
           })}
         </ScrollView>
 
-        {/* Input Bar — padding bas = safe area (clavier géré par KeyboardSafe + resize) */}
+        {/* Composer soft */}
         <View
           style={{
             backgroundColor: colors.nav,
-            borderTopColor: colors.border,
+            borderTopColor: colors.border + '66',
+            borderTopWidth: StyleSheet.hairlineWidth,
             paddingBottom: Math.max(insets.bottom, 10),
           }}
-          className="flex-row items-center px-4 pt-3 border-t gap-3"
+          className="flex-row items-center px-4 pt-3 gap-3"
         >
-          <View
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-            className="flex-1 flex-row items-center border rounded-2xl px-4 h-12"
-          >
+          <SoftSurface variant="inset" className="flex-1 flex-row items-center px-4 h-12">
             <TextInput
               placeholder="Écrire votre message..."
               placeholderTextColor={colors.textSecondary}
@@ -824,16 +789,17 @@ export default function ChatRoomScreen() {
               style={{ color: colors.text }}
               className="flex-1 font-inter text-sm h-full"
             />
-          </View>
+          </SoftSurface>
 
-          <Pressable
+          <PressableScale
             onPress={handleSendMessage}
-            className="w-12 h-12 rounded-xl bg-turmeric items-center justify-center active:opacity-90"
+            hapticKind="medium"
+            className="w-12 h-12 rounded-xl bg-turmeric items-center justify-center"
             accessibilityRole="button"
             accessibilityLabel="Envoyer le message"
           >
             <Send size={18} color="#0D0B05" style={{ transform: [{ rotate: '30deg' }] }} />
-          </Pressable>
+          </PressableScale>
         </View>
       </KeyboardSafe>
 
@@ -865,6 +831,6 @@ export default function ChatRoomScreen() {
           </View>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
