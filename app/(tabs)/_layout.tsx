@@ -42,8 +42,7 @@ function CleanTabButton(props: any) {
       accessibilityState={accessibilityState}
       accessibilityLabel={accessibilityLabel}
       testID={testID}
-      hapticKind="selection"
-      scaleTo={0.9}
+      scaleTo={0.94}
       android_ripple={{ color: 'transparent', borderless: false }}
       style={[{ flex: 1, opacity: 1 }, style]}
     >
