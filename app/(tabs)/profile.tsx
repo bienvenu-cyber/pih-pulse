@@ -354,10 +354,19 @@ export default function ProfileScreen() {
   };
 
   if (loading) {
+    // Même inset que le ScrollView chargé (headerOffset + 12 / px 16)
+    // pour éviter le saut / le chevauchement sous le glass header.
     return (
       <View className="flex-1" style={{ backgroundColor: colors.bg }}>
         <CollapsibleHeader title="Profil" visible />
-        <View style={{ paddingTop: headerOffset }}>
+        <View
+          style={{
+            flex: 1,
+            paddingTop: headerOffset + 12,
+            paddingHorizontal: 16,
+            paddingBottom: listBottom,
+          }}
+        >
           <ScreenSkeleton variant="profile" padded={false} />
         </View>
       </View>

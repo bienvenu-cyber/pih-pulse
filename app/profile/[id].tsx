@@ -214,8 +214,10 @@ export default function MemberProfileDetailsScreen() {
   };
 
   if (loading) {
+    // Header stack déjà en flux (pas absolute) — skeleton aligné sous le titre.
     return (
       <View style={{ backgroundColor: colors.bg }} className="flex-1">
+        <ThemedStackHeader title="Profil talent" onBack={() => router.back()} />
         <ScreenSkeleton variant="profile" />
       </View>
     );
